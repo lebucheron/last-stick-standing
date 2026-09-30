@@ -1,0 +1,3 @@
+ALTER TABLE events ADD COLUMN winner_start INTEGER;
+ALTER TABLE events ADD COLUMN deaths TEXT;
+ALTER TABLE events ADD COLUMN seed INTEGER;

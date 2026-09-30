@@ -124,7 +124,7 @@
     if(text.startsWith('Choisis')){if(finished){reopenChoice();finished=false;}return;}
     if(text.startsWith('Dernier debout')){
       lockChoice(false);
-      if(!raceStartedAt){raceStartedAt=Date.now();roundId=crypto.randomUUID?.()||String(raceStartedAt);report('race_started',{round_id:roundId,choice:playerBets[0]?.runner||null,choices:playerBets.map(b=>b.runner),bet_placed:betPlaced});}
+      if(!raceStartedAt){raceStartedAt=Date.now();roundId=crypto.randomUUID?.()||String(raceStartedAt);report('race_started',{round_id:roundId,seed:Number(root.dataset.roundSeed)||null,choice:playerBets[0]?.runner||null,choices:playerBets.map(b=>b.runner),bet_placed:betPlaced});}
     }
     const winner=text.match(/^([A-F]) gagne/);
     if(!winner)return;
@@ -148,7 +148,10 @@
     showSettlement(winner[1],pot,payout);
     updateMarket();potentialEl.textContent='Manche terminée';marketEl.textContent='RÈGLEMENT';marketEl.classList.remove('pending');
     settled=true;root.dataset.completedRounds=String(Number(root.dataset.completedRounds||0)+1);
-    report('race_finished',{round_id:roundId,winner:winner[1],choice:playerBets[0]?.runner||null,choices:playerBets.map(b=>b.runner),bet_placed:betPlaced,won:userWinningStake>0,duration_ms:raceStartedAt?Date.now()-raceStartedAt:null,sudden_death:text.includes('combat final')});
+    let starts={},deaths=[];
+    try{starts=JSON.parse(root.dataset.roundStarts||'{}');}catch{}
+    try{deaths=JSON.parse(root.dataset.roundDeaths||'[]');}catch{}
+    report('race_finished',{round_id:roundId,seed:Number(root.dataset.roundSeed)||null,winner:winner[1],winner_start:starts[winner[1]],deaths,choice:playerBets[0]?.runner||null,choices:playerBets.map(b=>b.runner),bet_placed:betPlaced,won:userWinningStake>0,duration_ms:raceStartedAt?Date.now()-raceStartedAt:null,sudden_death:text.includes('combat final')});
     raceStartedAt=0;roundId='';
   }).observe(status,{childList:true,characterData:true,subtree:true});
 

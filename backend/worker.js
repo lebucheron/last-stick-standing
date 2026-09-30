@@ -11,6 +11,13 @@ function json(data,status=200,extra={}){
 }
 
 function validId(value){return typeof value==='string'&&/^[a-zA-Z0-9-]{8,80}$/.test(value);}
+function cleanDeaths(value){
+  if(!Array.isArray(value))return [];
+  return value.slice(0,6).flatMap(item=>{
+    const runner=String(item?.runner||''),cause=String(item?.cause||''),at=Number(item?.at);
+    return /^[A-F]$/.test(runner)&&['impact','écrasement','combat'].includes(cause)&&Number.isFinite(at)&&at>=0&&at<=120?[{runner,cause,at:Math.round(at*10)/10}]:[];
+  });
+}
 
 async function receiveEvent(request,env){
   if(request.headers.get('origin')!=='https://lebucheron.github.io')return json({error:'origin_forbidden'},403);
@@ -39,10 +46,13 @@ async function receiveEvent(request,env){
       const finished=await env.DB.prepare("SELECT id FROM events WHERE session_id=? AND round_id=? AND type='race_finished' LIMIT 1").bind(event.session_id,event.round_id).first();
       if(!started||finished||Date.now()-Date.parse(started.created_at)<5000)return json({error:'invalid_sequence'},409);
     }
+    const winnerStart=Number.isInteger(event.winner_start)&&event.winner_start>=0&&event.winner_start<=9?event.winner_start:null;
+    const roundSeed=Number.isInteger(event.seed)&&event.seed>=1&&event.seed<=4294967295?event.seed:null;
+    const deaths=event.type==='race_finished'?JSON.stringify(cleanDeaths(event.deaths)):null;
     await env.DB.prepare(`INSERT INTO events
-      (session_id, type, round_id, winner, choice, bet_placed, won, duration_ms, sudden_death, is_test, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .bind(event.session_id,event.type,String(event.round_id||'').slice(0,80)||null,/^[A-F]$/.test(event.winner)?event.winner:null,/^[A-F]$/.test(event.choice)?event.choice:null,event.bet_placed?1:0,event.won?1:0,duration,event.sudden_death?1:0,isTest,now).run();
+      (session_id, type, round_id, seed, winner, choice, bet_placed, won, duration_ms, sudden_death, winner_start, deaths, is_test, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(event.session_id,event.type,String(event.round_id||'').slice(0,80)||null,roundSeed,/^[A-F]$/.test(event.winner)?event.winner:null,/^[A-F]$/.test(event.choice)?event.choice:null,event.bet_placed?1:0,event.won?1:0,duration,event.sudden_death?1:0,winnerStart,deaths,isTest,now).run();
   }
   return json({ok:true},202);
 }
@@ -51,16 +61,22 @@ async function stats(request,env){
   const expected=env.ADMIN_TOKEN;
   if(!expected||request.headers.get('authorization')!==`Bearer ${expected}`)return json({error:'unauthorized'},401);
   const since=env.STATS_SINCE||'1970-01-01T00:00:00Z';
-  const [active,visitors,rounds,average,winners,recent]=await Promise.all([
+  const [active,visitors,rounds,average,winners,starts,causes,combat,recent]=await Promise.all([
     env.DB.prepare("SELECT COUNT(*) count FROM sessions WHERE COALESCE(is_test,0)=0 AND datetime(last_seen) >= datetime('now','-45 seconds')").first(),
     env.DB.prepare("SELECT COUNT(*) count FROM sessions WHERE COALESCE(is_test,0)=0 AND datetime(first_seen) >= date('now')").first(),
     env.DB.prepare("SELECT COUNT(*) count FROM events WHERE type='race_finished' AND COALESCE(is_test,0)=0 AND created_at>=?").bind(since).first(),
     env.DB.prepare("SELECT AVG(duration_ms) value FROM events WHERE type='race_finished' AND COALESCE(is_test,0)=0 AND created_at>=?").bind(since).first(),
     env.DB.prepare("SELECT winner, COUNT(*) count FROM events WHERE type='race_finished' AND COALESCE(is_test,0)=0 AND created_at>=? GROUP BY winner").bind(since).all(),
-    env.DB.prepare("SELECT winner, won, duration_ms, sudden_death, created_at FROM events WHERE type='race_finished' AND COALESCE(is_test,0)=0 AND created_at>=? ORDER BY id DESC LIMIT 12").bind(since).all()
+    env.DB.prepare("SELECT winner_start, COUNT(*) count FROM events WHERE type='race_finished' AND winner_start IS NOT NULL AND COALESCE(is_test,0)=0 AND created_at>=? GROUP BY winner_start").bind(since).all(),
+    env.DB.prepare("SELECT json_extract(value,'$.cause') cause, COUNT(*) count FROM events, json_each(events.deaths) WHERE events.type='race_finished' AND deaths IS NOT NULL AND json_valid(deaths) AND COALESCE(is_test,0)=0 AND events.created_at>=? GROUP BY cause").bind(since).all(),
+    env.DB.prepare("SELECT COUNT(*) count FROM events WHERE type='race_finished' AND sudden_death=1 AND COALESCE(is_test,0)=0 AND created_at>=?").bind(since).first(),
+    env.DB.prepare("SELECT winner, won, duration_ms, sudden_death, winner_start, seed, created_at FROM events WHERE type='race_finished' AND COALESCE(is_test,0)=0 AND created_at>=? ORDER BY id DESC LIMIT 12").bind(since).all()
   ]);
   const byWinner=Object.fromEntries((winners.results||[]).map(row=>[row.winner,row.count]));
-  return json({active_now:active?.count||0,visitors_today:visitors?.count||0,rounds_today:rounds?.count||0,average_duration_ms:average?.value||null,winners:byWinner,recent_rounds:recent.results||[]},200,{'cache-control':'no-store'});
+  const byStart=Object.fromEntries((starts.results||[]).map(row=>[row.winner_start,row.count]));
+  const byCause=Object.fromEntries((causes.results||[]).map(row=>[row.cause,row.count]));
+  const roundCount=rounds?.count||0;
+  return json({active_now:active?.count||0,visitors_today:visitors?.count||0,rounds_today:roundCount,average_duration_ms:average?.value||null,combat_final_count:combat?.count||0,combat_final_rate:roundCount?(combat?.count||0)/roundCount:0,winners:byWinner,winning_starts:byStart,death_causes:byCause,recent_rounds:recent.results||[]},200,{'cache-control':'no-store'});
 }
 
 export default {

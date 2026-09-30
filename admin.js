@@ -15,9 +15,15 @@
       document.querySelector('#visitors-today').textContent=number(stats.visitors_today);
       document.querySelector('#rounds-today').textContent=number(stats.rounds_today);
       document.querySelector('#average-duration').textContent=stats.average_duration_ms?Math.round(stats.average_duration_ms/1000)+' s':'—';
+      document.querySelector('#combat-rate').textContent=stats.rounds_today?Math.round((stats.combat_final_rate||0)*100)+' %':'—';
+      document.querySelector('#combat-count').textContent=number(stats.combat_final_count)+' manche'+(stats.combat_final_count===1?'':'s');
       const max=Math.max(1,...Object.values(stats.winners||{}));
       document.querySelector('#winners').innerHTML=Object.keys(colors).map(id=>`<div class="winner-row"><b>${id}</b><i style="--bar:${colors[id]};--width:${(stats.winners?.[id]||0)/max*100}%"></i><span>${number(stats.winners?.[id])}</span></div>`).join('');
-      document.querySelector('#recent-rounds').innerHTML=(stats.recent_rounds||[]).map(round=>`<div class="recent-round"><b>${round.winner} gagne${round.won?' · pari gagné':''}</b><span>${Math.round(round.duration_ms/1000)} s</span><small>${new Date(round.created_at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}${round.sudden_death?' · combat final':''}</small></div>`).join('')||'<small>Aucune manche reçue.</small>';
+      const startMax=Math.max(1,...Object.values(stats.winning_starts||{}));
+      document.querySelector('#winning-starts').innerHTML=Array.from({length:10},(_,i)=>`<div class="winner-row"><b>${i+1}</b><i style="--bar:#7ddf8a;--width:${(stats.winning_starts?.[i]||0)/startMax*100}%"></i><span>${number(stats.winning_starts?.[i])}</span></div>`).join('');
+      const causeLabels={impact:'Impact direct','écrasement':'Écrasement','combat':'Combat final'},causeColors={impact:'#ff7d62','écrasement':'#d85151',combat:'#b77cff'},causeMax=Math.max(1,...Object.values(stats.death_causes||{}));
+      document.querySelector('#death-causes').innerHTML=Object.keys(causeLabels).map(id=>`<div class="winner-row cause-row"><b>${causeLabels[id]}</b><i style="--bar:${causeColors[id]};--width:${(stats.death_causes?.[id]||0)/causeMax*100}%"></i><span>${number(stats.death_causes?.[id])}</span></div>`).join('');
+      document.querySelector('#recent-rounds').innerHTML=(stats.recent_rounds||[]).map(round=>`<div class="recent-round"><b>${round.winner} gagne${round.won?' · pari gagné':''}</b><span>${Math.round(round.duration_ms/1000)} s</span><small>${new Date(round.created_at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}${round.winner_start===null||round.winner_start===undefined?'':' · départ '+(round.winner_start+1)}${round.sudden_death?' · combat final':''}${round.seed?' · seed '+round.seed:''}</small></div>`).join('')||'<small>Aucune manche reçue.</small>';
       connection.textContent='EN DIRECT';connection.className='connection online';dashboard.hidden=false;
       document.querySelector('#last-refresh').textContent='Actualisé à '+new Date().toLocaleTimeString('fr-FR');
       localStorage.setItem('last-stick-api-url',endpoint);

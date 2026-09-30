@@ -15,12 +15,15 @@ CREATE TABLE IF NOT EXISTS events (
   session_id TEXT NOT NULL,
   type TEXT NOT NULL,
   round_id TEXT,
+  seed INTEGER,
   winner TEXT,
   choice TEXT,
   bet_placed INTEGER NOT NULL DEFAULT 0,
   won INTEGER NOT NULL DEFAULT 0,
   duration_ms INTEGER,
   sudden_death INTEGER NOT NULL DEFAULT 0,
+  winner_start INTEGER,
+  deaths TEXT,
   is_test INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL
 );

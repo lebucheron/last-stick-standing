@@ -4,7 +4,7 @@
   const W=420,H=460,S=40,LEFT=10,COLS=10,BASE=420,RADIUS=6,BODY=27,VISUAL_SCALE=1.08;
   const RESULT_SHOW=5.5,PLAY_LIMIT=40,FINAL_DUEL_AT=43,LOBBY_END=3,RACE_START=9;
   const ARENA_W=COLS*S,ZONE_W=ARENA_W*.25;
-  let stones=[],pieces=[],men=[],specks=[],stains=[],bursts=[],dust=[],time=0,next=3,camera=0,over=0,round=0,second=-1,palette,seed=1,turn=0,portals=[],teleports=0,impact=0,winnerId=-1,tieBreak=null,paceStart=28,paceSpan=70;
+  let stones=[],pieces=[],men=[],specks=[],stains=[],bursts=[],dust=[],deathLog=[],time=0,next=3,camera=0,over=0,round=0,second=-1,palette,seed=1,turn=0,portals=[],teleports=0,impact=0,winnerId=-1,tieBreak=null,paceStart=28,paceSpan=70;
   let paused=window.openai?.widgetState?.privateContent?.paused??matchMedia('(prefers-reduced-motion: reduce)').matches;
   function random(){seed^=seed<<13;seed^=seed>>>17;seed^=seed<<5;return (seed>>>0)/4294967296;}
   function shuffled(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
@@ -16,8 +16,8 @@
   function peerAhead(r,d,range=30){return men.find(o=>o!==r&&o.alive&&!o.climb&&Math.abs(o.y-r.y)<BODY-4&&(o.x-r.x)*d>0&&(o.x-r.x)*d<range);}
   function groundAt(x,y){let ground=BASE;for(const c of stones)if(x+RADIUS>c.x+.2&&x-RADIUS<c.x+S-.2&&c.y>=y-.6)ground=Math.min(ground,c.y);return ground;}
   function reset(){
-    const bytes=new Uint32Array(1);if(globalThis.crypto?.getRandomValues)crypto.getRandomValues(bytes);else bytes[0]=Math.floor(Math.random()*4294967296);seed=bytes[0]||1;turn=(seed>>>8)%6;
-    stones=[];pieces=[];portals=[];teleports=0;specks=[];stains=[];bursts=[];dust=[];time=0;next=3;camera=0;over=0;second=-1;impact=0;winnerId=-1;tieBreak=null;round++;
+    const bytes=new Uint32Array(1);if(globalThis.crypto?.getRandomValues)crypto.getRandomValues(bytes);else bytes[0]=Math.floor(Math.random()*4294967296);seed=bytes[0]||1;root.dataset.roundSeed=String(seed>>>0);turn=(seed>>>8)%6;
+    stones=[];pieces=[];portals=[];teleports=0;specks=[];stains=[];bursts=[];dust=[];deathLog=[];time=0;next=3;camera=0;over=0;second=-1;impact=0;winnerId=-1;tieBreak=null;round++;
     // Every arena gets its own rhythm. There is no hidden target duration:
     // some rounds become hostile early, while others build more slowly.
     paceStart=14+random()*12;paceSpan=30+random()*20;
@@ -26,6 +26,7 @@
     for(let col=0;col<COLS;col++)for(let h=0;h<heights[col];h++)stones.push({x:LEFT+col*S,y:BASE-(h+1)*S});
     const starts=shuffled(Array.from({length:COLS},(_,i)=>i)).slice(0,6).sort((a,b)=>a-b);
     const ids=shuffled([0,1,2,3,4,5]);men=ids.map((id,i)=>({id,x:LEFT+(starts[i]+.5)*S,y:BASE-heights[starts[i]]*S,vy:0,dir:-1,alive:true,ground:true,phase:i,climb:null,land:0,choice:0,vx:0,blocked:0,moving:0,pushCooldown:0,pushPose:0,recoil:0,shove:0,idle:0}));
+    root.dataset.roundStarts=JSON.stringify(Object.fromEntries(men.map(r=>[String.fromCharCode(65+r.id),Math.round((r.x-LEFT)/S-.5)])));root.dataset.roundDeaths='[]';
     legend.innerHTML=Array.from({length:6},(_,i)=>'<span data-man="'+i+'"><span style="color:var(--viz-series-'+(i+1)+')">●</span> '+String.fromCharCode(65+i)+'</span>').join('');result.textContent='';
   }
   function terrainPlayable(profile){
@@ -95,8 +96,10 @@
     r.pushCooldown=3;r.pushPose=.24;r.vx=0;other.shove=r.dir*160;other.recoil=.32;other.choice=.32;
     return true;
   }
-  function kill(r){
+  function kill(r,cause='impact'){
+    if(!r.alive)return;
     r.alive=false;root.querySelector('[data-man="'+r.id+'"]').style.opacity='.3';
+    deathLog.push({runner:String.fromCharCode(65+r.id),cause,at:Math.max(0,Math.round((time-RACE_START)*10)/10)});root.dataset.roundDeaths=JSON.stringify(deathLog);
     bursts.push({x:r.x,y:r.y-12,life:.2});
     for(let i=0;i<28;i++){const life=.8+Math.random()*.7;specks.push({x:r.x,y:r.y-9-Math.random()*12,vx:(Math.random()-.5)*240,vy:-30-Math.random()*180,life,max:life,size:1.2+Math.random()*2.5});}
   }
@@ -109,7 +112,7 @@
     for(const p of dust){p.life-=dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.vx*=Math.exp(-4*dt);p.vy-=7*dt;}dust=dust.filter(p=>p.life>0);
   }
   function finish(ids,tie){const id=ids[Math.floor(random()*ids.length)];winnerId=id;status.textContent=String.fromCharCode(65+id)+' gagne · '+Math.max(0,Math.floor(time-RACE_START))+' s'+(tie?' · combat final':'');result.textContent=status.textContent;over=RESULT_SHOW;}
-  function beginTieBreak(ids,duration=4.2,subtitle='LES DEUX DERNIERS RÈGLENT ÇA'){const finalists=[...new Set(ids)];if(finalists.length!==2)return false;const winner=finalists[Math.floor(random()*finalists.length)];tieBreak={ids:finalists,winner,left:duration,total:duration,subtitle};status.textContent='Combat final · '+finalists.map(id=>String.fromCharCode(65+id)).join(' vs ');result.textContent=status.textContent;return true;}
+  function beginTieBreak(ids,duration=4.2,subtitle='LES DEUX DERNIERS RÈGLENT ÇA'){const finalists=[...new Set(ids)];if(finalists.length!==2)return false;const winner=finalists[Math.floor(random()*finalists.length)],loser=finalists.find(id=>id!==winner);if(men.find(r=>r.id===loser)?.alive){deathLog.push({runner:String.fromCharCode(65+loser),cause:'combat',at:Math.max(0,Math.round((time-RACE_START)*10)/10)});root.dataset.roundDeaths=JSON.stringify(deathLog);}tieBreak={ids:finalists,winner,left:duration,total:duration,subtitle};status.textContent='Combat final · '+finalists.map(id=>String.fromCharCode(65+id)).join(' vs ');result.textContent=status.textContent;return true;}
   function climbTarget(r,d){
     const x=r.x+d*20;const surfaces=stones.filter(c=>x+RADIUS>c.x&&x-RADIUS<c.x+S&&r.y-c.y>2&&r.y-c.y<=S+.5).sort((a,b)=>a.y-b.y);
     for(const c of surfaces){const tx=d>0?c.x+RADIUS+3:c.x+S-RADIUS-3;if(Math.abs(tx-r.x)>35||!clearBody(tx,c.y)||!peerClear(r,tx,c.y))continue;
@@ -132,10 +135,10 @@
     for(const p of [...pieces]){
       if(p.wait>0){p.wait-=dt;continue;}const old=p.y;p.vy+=(185+pressure*420)*dt;p.y=Math.min(p.target,p.y+p.vy*dt);
       const hit=[];for(const r of men){if(!r.alive)continue;for(const [dx,dy] of p.cells){const x=LEFT+(p.col+dx)*S,top=old+dy*S,bottom=p.y+(dy+1)*S;
-        if(r.x+RADIUS>x+1&&r.x-RADIUS<x+S-1&&r.y>top+1&&r.y-BODY<bottom-.1){hit.push(r.id);kill(r);break;}}
+        if(r.x+RADIUS>x+1&&r.x-RADIUS<x+S-1&&r.y>top+1&&r.y-BODY<bottom-.1){hit.push(r.id);kill(r,'impact');break;}}
       }
       frameDeaths.push(...hit);
-      if(p.y>=p.target){impact=.12;for(const [dx,dy] of p.cells)stones.push({x:LEFT+(p.col+dx)*S,y:p.target+dy*S});for(const dx of new Set(p.cells.map(cell=>cell[0])))for(let i=0;i<7;i++){const life=.32+Math.random()*.28;dust.push({x:LEFT+(p.col+dx+.5)*S+(Math.random()-.5)*24,y:p.target+S*(1+Math.max(...p.cells.filter(cell=>cell[0]===dx).map(cell=>cell[1]))),vx:(Math.random()-.5)*85,vy:-12-Math.random()*32,life,max:life,size:1+Math.random()*2.5});}pieces.splice(pieces.indexOf(p),1);const crushed=[];for(const r of men)if(r.alive&&!clearBody(r.x,r.y)){crushed.push(r.id);kill(r);}frameDeaths.push(...crushed);}
+      if(p.y>=p.target){impact=.12;for(const [dx,dy] of p.cells)stones.push({x:LEFT+(p.col+dx)*S,y:p.target+dy*S});for(const dx of new Set(p.cells.map(cell=>cell[0])))for(let i=0;i<7;i++){const life=.32+Math.random()*.28;dust.push({x:LEFT+(p.col+dx+.5)*S+(Math.random()-.5)*24,y:p.target+S*(1+Math.max(...p.cells.filter(cell=>cell[0]===dx).map(cell=>cell[1]))),vx:(Math.random()-.5)*85,vy:-12-Math.random()*32,life,max:life,size:1+Math.random()*2.5});}pieces.splice(pieces.indexOf(p),1);const crushed=[];for(const r of men)if(r.alive&&!clearBody(r.x,r.y)){crushed.push(r.id);kill(r,'écrasement');}frameDeaths.push(...crushed);}
     }
     const remaining=men.filter(r=>r.alive);if(frameDeaths.length&&remaining.length<=1){if(remaining.length)finish([remaining[0].id],false);else{const finalists=[...new Set(frameDeaths)];if(finalists.length===2)beginTieBreak(finalists);else finish(finalists,false);}return;}
     const movers=men.slice(turn).concat(men.slice(0,turn));turn=(turn+1)%men.length;
