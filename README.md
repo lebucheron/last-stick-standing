@@ -26,6 +26,9 @@ La page `index.html` présente la v0.1, puis `play.html` lance la démonstration
 - Double chute lorsqu'il reste trois survivants.
 - Sang cartoon et traces persistantes pendant la manche.
 - Le dernier survivant gagne ; une mort subite visible départage ceux qui meurent au même instant.
+- Falaises possibles sur deux niveaux : les stickmen peuvent les descendre, mais ne grimpent toujours qu'un seul bloc. Les cuvettes fermées de deux niveaux sont refusées.
+- Jusqu'à deux tickets locaux de 500 CR par manche pour jouer côte à côte avec un ami.
+- Économie de démonstration resserrée : 12 % de régulation, jackpot alimenté par 15 % des pots sans gagnant et plafond de 15 000 CR pour les nouvelles accumulations.
 
 ## Lancer le prototype
 

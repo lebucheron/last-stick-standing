@@ -28,6 +28,11 @@
     const ids=shuffled([0,1,2,3,4,5]);men=ids.map((id,i)=>({id,x:LEFT+(starts[i]+.5)*S,y:BASE-heights[starts[i]]*S,vy:0,dir:-1,alive:true,ground:true,phase:i,climb:null,land:0,choice:0,vx:0,blocked:0,moving:0,pushCooldown:0,pushPose:0,recoil:0,shove:0,idle:0}));
     legend.innerHTML=Array.from({length:6},(_,i)=>'<span data-man="'+i+'"><span style="color:var(--viz-series-'+(i+1)+')">●</span> '+String.fromCharCode(65+i)+'</span>').join('');result.textContent='';
   }
+  function terrainPlayable(profile){
+    const slopes=profile.every((value,i)=>i===0||Math.abs(value-profile[i-1])<=S*2+.1);
+    const noPocket=profile.every((value,i)=>!(value-profile[(i+COLS-1)%COLS]>S+.1&&value-profile[(i+1)%COLS]>S+.1));
+    return slopes&&noPocket;
+  }
   function spawnWave(count=1,intensity=0){
     const tops=Array.from({length:COLS},(_,i)=>{let y=BASE;for(const c of stones)if(c.x===LEFT+i*S)y=Math.min(y,c.y);return y;});
     const planned=tops.slice(),reserved=new Set();let zoneStart=0,zoneColumns=[];
@@ -37,7 +42,7 @@
         const center=(col+.5)*S,offset=(center-zoneStart+ARENA_W)%ARENA_W;
         if(offset>=ZONE_W)return false;
         const profile=planned.slice();profile[col]-=S;
-        return profile.every((value,i)=>i===0||Math.abs(value-profile[i-1])<=S+.1);
+        return terrainPlayable(profile);
       });
     }
     if(!zoneColumns.length)return;
@@ -45,7 +50,7 @@
     for(let index=0;index<count;index++){
       const options=zoneColumns.filter(col=>!reserved.has(col)).map(col=>{
         const profile=planned.slice();profile[col]-=S;
-        if(profile.some((value,i)=>i>0&&Math.abs(value-profile[i-1])>S+.1))return null;
+        if(!terrainPlayable(profile))return null;
         const roughness=profile.slice(1).reduce((sum,value,i)=>sum+Math.abs(value-profile[i])/S,0);
         const heightRange=(Math.max(...profile)-Math.min(...profile))/S;
         return {col,target:profile[col],score:random()*34-roughness*5-heightRange*4};
@@ -136,7 +141,7 @@
     const movers=men.slice(turn).concat(men.slice(0,turn));turn=(turn+1)%men.length;
     for(const r of movers){
       if(!r.alive)continue;const startX=r.x;r.land=Math.max(0,r.land-dt);r.choice-=dt;r.pushCooldown=Math.max(0,r.pushCooldown-dt);r.pushPose=Math.max(0,r.pushPose-dt);r.recoil=Math.max(0,r.recoil-dt);
-      if(r.climb){const c=r.climb;const nextT=c.t+dt,u=Math.min(1,nextT/.62),lift=Math.min(1,u/.72),e=1-Math.pow(1-lift,3),side=Math.max(0,(u-.42)/.58),slide=side*side*(3-2*side),x=c.sx+(c.tx-c.sx)*slide,y=c.sy+(c.ty-c.sy)*e;
+      if(r.climb){const c=r.climb;const nextT=c.t+dt,u=Math.min(1,nextT/.68),lift=Math.min(1,u/.68),e=lift*lift*(3-2*lift),x=c.sx+(c.tx-c.sx)*Math.max(0,(u-.68)/.32),y=c.sy+(c.ty-c.sy)*e;
         if(clearBody(x,y)&&peerClear(r,x,y)){c.t=nextT;r.x=x;r.y=y;r.blocked=0;}else{r.blocked+=dt;if(r.blocked>.5){r.climb=null;r.vy=0;r.ground=false;r.choice=0;}}
         if(u===1&&r.climb){r.climb=null;r.ground=true;r.land=.12;r.vy=0;r.vx=r.dir*25;}continue;
       }
@@ -229,7 +234,7 @@
     for(const p of pieces){if(p.wait<=0){ctx.fillStyle=palette.stone;ctx.globalAlpha=.08;for(const [dx,dy] of p.cells){const x=LEFT+(p.col+dx)*S;ctx.fillRect(x+8,p.y+dy*S-22,S-16,18);}}ctx.globalAlpha=1;for(const [dx,dy] of p.cells)stone(LEFT+(p.col+dx)*S,p.y+dy*S,.87);}
     ctx.fillStyle=palette.blood;ctx.globalAlpha=.72;for(const p of stains){ctx.beginPath();ctx.ellipse(p.x,p.y,p.size*1.6,p.size*.7,0,0,Math.PI*2);ctx.fill();if(p.drip)ctx.fillRect(p.x-.65,p.y,1.3,p.drip);}ctx.globalAlpha=1;
     const concealed=time<6;
-    for(const r of men){if(!r.alive)continue;const selected=!concealed&&root.dataset?.selectedRunner?.charCodeAt(0)-65===r.id;if(selected){ctx.fillStyle=palette.series[r.id];ctx.globalAlpha=.95;ctx.beginPath();ctx.arc(r.x,r.y-39,3,0,Math.PI*2);ctx.fill();ctx.globalAlpha=.22;ctx.beginPath();ctx.arc(r.x,r.y-39,7,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;}ctx.save();ctx.translate(r.x,r.y);ctx.scale(-r.dir*VISUAL_SCALE,VISUAL_SCALE);if(r.recoil>0)ctx.rotate(-Math.sign(r.shove||r.dir)*r.dir*.18);ctx.lineWidth=2.6;ctx.lineCap='round';ctx.lineJoin='round';ctx.strokeStyle=concealed?palette.stone:palette.series[r.id];ctx.fillStyle=concealed?palette.stone:palette.series[r.id];
+    for(const r of men){if(!r.alive)continue;const picks=root.dataset?.selectedRunners||root.dataset?.selectedRunner||'',selected=!concealed&&picks.includes(String.fromCharCode(65+r.id));if(selected){ctx.fillStyle=palette.series[r.id];ctx.globalAlpha=.95;ctx.beginPath();ctx.arc(r.x,r.y-39,3,0,Math.PI*2);ctx.fill();ctx.globalAlpha=.22;ctx.beginPath();ctx.arc(r.x,r.y-39,7,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;}ctx.save();ctx.translate(r.x,r.y);ctx.scale(-r.dir*VISUAL_SCALE,VISUAL_SCALE);if(r.recoil>0)ctx.rotate(-Math.sign(r.shove||r.dir)*r.dir*.18);ctx.lineWidth=2.6;ctx.lineCap='round';ctx.lineJoin='round';ctx.strokeStyle=concealed?palette.stone:palette.series[r.id];ctx.fillStyle=concealed?palette.stone:palette.series[r.id];
       const walk=Math.sin(r.phase)*6*r.moving;ctx.beginPath();ctx.arc(-2,-23,3.7,0,Math.PI*2);ctx.fill();line([[-2,-19],[0,-11]]);
       if(r.pushPose>0){line([[-2,-18],[-10,-17],[-17,-17]]);line([[-1,-17],[-9,-14],[-17,-15]]);line([[0,-11],[-7,-5],[-10,0]]);line([[0,-11],[7,-5],[10,0]]);}
       else if(r.climb){const reach=Math.min(1,r.climb.t/.3),grip=-25-reach*5;line([[-2,-18],[-8,-22],[-12,grip]]);line([[-1,-17],[5,-22],[10,grip+1]]);line([[0,-11],[-7,-8],[-10,-1]]);line([[0,-11],[7,-7],[9,0]]);}
