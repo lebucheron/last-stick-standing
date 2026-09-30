@@ -17,14 +17,14 @@
     return ['Audit de 10 000 manches atteint','La base permet une documentation statistique robuste.'];
   }
   function updateVersions(stats){
-    const selected=stats.selected_ruleset||rulesetFilter.value||'R2',versions=stats.available_rulesets||[];
+    const selected=stats.selected_ruleset||rulesetFilter.value||'R3',versions=stats.available_rulesets||[];
     rulesetFilter.replaceChildren();
     for(const item of versions){const option=document.createElement('option');option.value=item.ruleset;option.textContent=item.ruleset+' · '+number(item.count)+' manches';rulesetFilter.append(option);}
-    if(!versions.some(item=>item.ruleset==='R2')){const option=document.createElement('option');option.value='R2';option.textContent='R2 · 0 manche';rulesetFilter.prepend(option);}
+    if(!versions.some(item=>item.ruleset==='R3')){const option=document.createElement('option');option.value='R3';option.textContent='R3 · 0 manche';rulesetFilter.prepend(option);}
     const all=document.createElement('option');all.value='all';all.textContent='Toutes les versions';rulesetFilter.append(all);rulesetFilter.value=selected;
   }
   async function refresh(){
-    const endpoint=apiInput.value.replace(/\/$/,''),key=keyInput.value,version=rulesetFilter.value||'R2';
+    const endpoint=apiInput.value.replace(/\/$/,''),key=keyInput.value,version=rulesetFilter.value||'R3';
     try{
       const response=await fetch(endpoint+'/api/stats?ruleset='+encodeURIComponent(version),{headers:{authorization:'Bearer '+key},cache:'no-store'});
       if(!response.ok)throw new Error(response.status===401?'Clé refusée':'API indisponible');

@@ -2,7 +2,7 @@
   const root=document.getElementById('stick-tetris'),canvas=root.querySelector('canvas'),ctx=canvas.getContext('2d');
   const status=root.querySelector('#st-status'),button=root.querySelector('#st-pause'),legend=root.querySelector('#st-legend'),result=root.querySelector('#st-result');
   const W=420,H=460,S=40,LEFT=10,COLS=10,BASE=420,RADIUS=6,BODY=27,VISUAL_SCALE=1.08;
-  const RULESET='R2',RESULT_SHOW=7.5,DEATH_REVEAL=.85,PLAY_LIMIT=40,FINAL_DUEL_AT=43,LOBBY_END=3,RACE_START=9;
+  const RULESET='R3',RESULT_SHOW=7.5,DEATH_REVEAL=.85,PLAY_LIMIT=40,FINAL_DUEL_AT=43,LOBBY_END=3,RACE_START=9;
   const ARENA_W=COLS*S,ZONE_W=ARENA_W*.25;
   let stones=[],pieces=[],men=[],specks=[],stains=[],bursts=[],dust=[],deathLog=[],time=0,next=3,camera=0,over=0,round=0,second=-1,palette,seed=1,turn=0,portals=[],teleports=0,impact=0,winnerId=-1,tieBreak=null,pendingFinish=null,paceStart=28,paceSpan=70,networked=false,waitingForNetwork=false,networkRaceAt=0;
   let paused=window.openai?.widgetState?.privateContent?.paused??matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -25,7 +25,7 @@
     do{heights=Array.from({length:COLS},()=>Math.floor(random()*3));}while(heights.every(h=>h===heights[0])||heights.some((h,i)=>Math.abs(h-heights[(i+1)%COLS])>1));
     for(let col=0;col<COLS;col++)for(let h=0;h<heights[col];h++)stones.push({x:LEFT+col*S,y:BASE-(h+1)*S});
     const starts=shuffled(Array.from({length:COLS},(_,i)=>i)).slice(0,6).sort((a,b)=>a-b);
-    const ids=shuffled([0,1,2,3,4,5]);men=ids.map((id,i)=>({id,x:LEFT+(starts[i]+.5)*S,y:BASE-heights[starts[i]]*S,vy:0,dir:-1,alive:true,ground:true,phase:i,climb:null,land:0,choice:0,vx:0,blocked:0,moving:0,pushCooldown:0,pushPose:0,recoil:0,shove:0,idle:0}));
+    const ids=shuffled([0,1,2,3,4,5]);men=ids.map((id,i)=>({id,x:LEFT+(starts[i]+.5)*S,y:BASE-heights[starts[i]]*S,vy:0,dir:-1,alive:true,ground:true,phase:i,climb:null,land:0,choice:0,vx:0,blocked:0,moving:0,pushCooldown:0,pushPose:0,passCooldown:0,passPose:0,recoil:0,shove:0,idle:0}));
     root.dataset.roundStarts=JSON.stringify(Object.fromEntries(men.map(r=>[String.fromCharCode(65+r.id),Math.round((r.x-LEFT)/S-.5)])));root.dataset.roundDeaths='[]';
     if(Number.isFinite(Number(config.raceAt)))time=Math.max(0,Math.min(RACE_START-.05,RACE_START-(Number(config.raceAt)-Date.now())/1000));
     legend.innerHTML=Array.from({length:6},(_,i)=>'<span data-man="'+i+'"><span style="color:var(--viz-series-'+(i+1)+')">●</span> '+String.fromCharCode(65+i)+'</span>').join('');result.textContent='';
@@ -97,6 +97,10 @@
     r.pushCooldown=3;r.pushPose=.24;r.vx=0;other.shove=r.dir*160;other.recoil=.32;other.choice=.32;
     return true;
   }
+  function tryPass(r,other){
+    if(!other||r.passCooldown>0||other.passCooldown>0||!r.ground||!other.ground||r.climb||other.climb||r.dir!==-other.dir||Math.abs(r.y-other.y)>3||Math.abs(r.x-other.x)>21)return false;
+    const x=r.x;r.x=other.x;other.x=x;r.passCooldown=.8;other.passCooldown=.8;r.passPose=.28;other.passPose=.28;r.blocked=0;other.blocked=0;r.choice=.3;other.choice=.3;r.vx=r.dir*34;other.vx=other.dir*34;return true;
+  }
   function kill(r,cause='impact'){
     if(!r.alive)return;
     r.alive=false;root.querySelector('[data-man="'+r.id+'"]').style.opacity='.3';
@@ -149,7 +153,7 @@
     const remaining=men.filter(r=>r.alive);if(frameDeaths.length&&remaining.length<=1){if(remaining.length)revealFinish([remaining[0].id]);else{const finalists=[...new Set(frameDeaths)];if(finalists.length===2)beginTieBreak(finalists);else revealFinish(finalists);}return;}
     const movers=men.slice(turn).concat(men.slice(0,turn));turn=(turn+1)%men.length;
     for(const r of movers){
-      if(!r.alive)continue;const startX=r.x;r.land=Math.max(0,r.land-dt);r.choice-=dt;r.pushCooldown=Math.max(0,r.pushCooldown-dt);r.pushPose=Math.max(0,r.pushPose-dt);r.recoil=Math.max(0,r.recoil-dt);
+      if(!r.alive)continue;const startX=r.x;r.land=Math.max(0,r.land-dt);r.choice-=dt;r.pushCooldown=Math.max(0,r.pushCooldown-dt);r.pushPose=Math.max(0,r.pushPose-dt);r.passCooldown=Math.max(0,r.passCooldown-dt);r.passPose=Math.max(0,r.passPose-dt);r.recoil=Math.max(0,r.recoil-dt);
       if(r.climb){const c=r.climb;const nextT=c.t+dt,u=Math.min(1,nextT/.68),lift=Math.min(1,u/.68),e=lift*lift*(3-2*lift),x=c.sx+(c.tx-c.sx)*Math.max(0,(u-.68)/.32),y=c.sy+(c.ty-c.sy)*e;
         if((c.warped||clearBody(x,y))&&peerClear(r,x,y)){c.t=nextT;r.x=x;r.y=y;r.blocked=0;}else{r.blocked+=dt;if(r.blocked>.5){r.climb=null;r.vy=0;r.ground=false;r.choice=0;}}
         if(u===1&&r.climb){r.climb=null;r.ground=true;r.land=.12;r.vy=0;r.vx=r.dir*25;}continue;
@@ -178,11 +182,11 @@
           else if(left)r.dir=-1;else if(right)r.dir=1;else r.dir=-r.dir;
           r.idle=0;
         }
-        // Outside an alert, two runners approaching the same point give way
-        // before touching. This keeps the arena circulating instead of making
-        // a motionless pile that looks deliberately scheduled.
-        if(!danger&&peerAhead(r,r.dir)){
-          r.dir*=-1;r.choice=.25+random()*.25;r.vx=0;r.blocked=0;
+        // Outside an alert, two runners face to face on the same level trade
+        // places and keep going. Other encounters still give way before contact.
+        const meeting=!danger&&peerAhead(r,r.dir);
+        if(meeting){
+          const canPass=meeting.dir===-r.dir&&Math.abs(meeting.y-r.y)<=3;if(canPass){if(Math.abs(meeting.x-r.x)<=21)tryPass(r,meeting);}else{r.dir*=-1;r.choice=.25+random()*.25;r.vx=0;r.blocked=0;}
         }
       }
 
@@ -245,7 +249,8 @@
     const concealed=time<RACE_START;
     for(const r of men){if(!r.alive)continue;const picks=root.dataset?.selectedRunners||root.dataset?.selectedRunner||'',selected=!concealed&&picks.includes(String.fromCharCode(65+r.id));if(selected){ctx.fillStyle=palette.series[r.id];ctx.globalAlpha=.95;ctx.beginPath();ctx.arc(r.x,r.y-39,3,0,Math.PI*2);ctx.fill();ctx.globalAlpha=.22;ctx.beginPath();ctx.arc(r.x,r.y-39,7,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;}ctx.save();ctx.translate(r.x,r.y);ctx.scale(-r.dir*VISUAL_SCALE,VISUAL_SCALE);if(r.recoil>0)ctx.rotate(-Math.sign(r.shove||r.dir)*r.dir*.18);ctx.lineWidth=2.6;ctx.lineCap='round';ctx.lineJoin='round';ctx.strokeStyle=concealed?palette.stone:palette.series[r.id];ctx.fillStyle=concealed?palette.stone:palette.series[r.id];
       const walk=Math.sin(r.phase)*6*r.moving;ctx.beginPath();ctx.arc(-2,-23,3.7,0,Math.PI*2);ctx.fill();line([[-2,-19],[0,-11]]);
-      if(r.pushPose>0){line([[-2,-18],[-10,-17],[-17,-17]]);line([[-1,-17],[-9,-14],[-17,-15]]);line([[0,-11],[-7,-5],[-10,0]]);line([[0,-11],[7,-5],[10,0]]);}
+      if(r.passPose>0){ctx.rotate(r.dir*.08);line([[-2,-18],[-8,-13],[-12,-8]]);line([[-1,-17],[7,-13],[11,-9]]);line([[0,-11],[-8,-5],[5,0]]);line([[0,-11],[8,-5],[-5,0]]);}
+      else if(r.pushPose>0){line([[-2,-18],[-10,-17],[-17,-17]]);line([[-1,-17],[-9,-14],[-17,-15]]);line([[0,-11],[-7,-5],[-10,0]]);line([[0,-11],[7,-5],[10,0]]);}
       else if(r.climb){const reach=Math.min(1,r.climb.t/.3),grip=-25-reach*5;line([[-2,-18],[-8,-22],[-12,grip]]);line([[-1,-17],[5,-22],[10,grip+1]]);line([[0,-11],[-7,-8],[-10,-1]]);line([[0,-11],[7,-7],[9,0]]);}
       else if(!r.ground){line([[-2,-18],[-9,-22],[-12,-28]]);line([[-1,-18],[7,-22],[10,-27]]);line([[0,-11],[-6,-5],[-9,0]]);line([[0,-11],[5,-5],[8,0]]);}
       else{ctx.translate(0,r.land?2:0);line([[-2,-18],[-walk,-14],[-walk-3,-18]]);line([[-2,-18],[walk,-14],[walk+2,-18]]);line([[0,-11],[-walk,-5],[-walk-2,0]]);line([[0,-11],[walk,-5],[walk+2,0]]);}ctx.restore();
