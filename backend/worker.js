@@ -79,6 +79,52 @@ async function stats(request,env){
   return json({active_now:active?.count||0,visitors_today:visitors?.count||0,rounds_today:roundCount,average_duration_ms:average?.value||null,combat_final_count:combat?.count||0,combat_final_rate:roundCount?(combat?.count||0)/roundCount:0,winners:byWinner,winning_starts:byStart,death_causes:byCause,recent_rounds:recent.results||[]},200,{'cache-control':'no-store'});
 }
 
+function nextSeed(){const data=new Uint32Array(1);crypto.getRandomValues(data);return data[0]||1;}
+function botPicks(seed){
+  let value=seed>>>0;const picks=[];
+  for(let i=0;i<5;i++){value^=value<<13;value^=value>>>17;value^=value<<5;picks.push(String.fromCharCode(65+(value>>>0)%6));}
+  if(new Set(picks).size===1)picks[4]=String.fromCharCode(65+((picks[4].charCodeAt(0)-64)%6));
+  return picks;
+}
+
+export class MatchRoom{
+  constructor(state,env){this.state=state;this.env=env;}
+  sockets(){return this.state.getWebSockets();}
+  async createRound(){
+    const seed=nextSeed(),round={id:crypto.randomUUID(),seed,raceAt:Date.now()+9000,bots:botPicks(seed),bets:{},closing:false};
+    await this.state.storage.put('round',round);await this.state.storage.setAlarm(round.raceAt+55000);return round;
+  }
+  async current(){let round=await this.state.storage.get('round');if(!round||Date.now()>round.raceAt+60000)round=await this.createRound();return round;}
+  market(round){
+    const counts=Object.fromEntries(['A','B','C','D','E','F'].map(id=>[id,0]));
+    for(const id of round.bots||[])if(counts[id]!==undefined)counts[id]++;
+    for(const picks of Object.values(round.bets||{}))for(const id of picks)if(counts[id]!==undefined)counts[id]++;
+    return {type:'market',roundId:round.id,counts,humans:this.sockets().length,bots:(round.bots||[]).length};
+  }
+  send(socket,message){try{socket.send(JSON.stringify(message));}catch{}}
+  broadcast(message){for(const socket of this.sockets())this.send(socket,message);}
+  async fetch(request){
+    if(request.headers.get('Upgrade')!=='websocket')return new Response('WebSocket required',{status:426});
+    const session=new URL(request.url).searchParams.get('session');if(!validId(session))return new Response('Invalid session',{status:400});
+    const pair=new WebSocketPair(),client=pair[0],server=pair[1];this.state.acceptWebSocket(server);server.serializeAttachment({session});
+    const round=await this.current();
+    if(Date.now()<round.raceAt)this.send(server,{type:'round',roundId:round.id,seed:round.seed,raceAt:round.raceAt});else this.send(server,{type:'waiting',roundId:round.id});
+    this.broadcast(this.market(round));return new Response(null,{status:101,webSocket:client});
+  }
+  async webSocketMessage(socket,message){
+    let data;try{data=JSON.parse(String(message));}catch{return;}const round=await this.current(),session=socket.deserializeAttachment()?.session;
+    if(data.type==='bet'&&data.roundId===round.id&&Date.now()<round.raceAt&&/^[A-F]$/.test(data.choice)&&[1,2].includes(data.ticket)&&session){
+      const picks=Array.isArray(round.bets[session])?round.bets[session].slice(0,2):[];picks[data.ticket-1]=data.choice;round.bets[session]=picks.filter(Boolean);await this.state.storage.put('round',round);this.broadcast(this.market(round));
+    }
+    if(data.type==='finished'&&data.roundId===round.id&&!round.closing&&Date.now()>=round.raceAt+5000){
+      round.closing=true;await this.state.storage.put('round',round);await this.state.storage.setAlarm(Date.now()+6000);this.broadcast({type:'result',roundId:round.id,winner:/^[A-F]$/.test(data.winner)?data.winner:null});
+    }
+  }
+  async webSocketClose(){const round=await this.current();this.broadcast(this.market(round));}
+  async webSocketError(){const round=await this.current();this.broadcast(this.market(round));}
+  async alarm(){const round=await this.createRound();this.broadcast({type:'round',roundId:round.id,seed:round.seed,raceAt:round.raceAt});this.broadcast(this.market(round));}
+}
+
 export default {
   async fetch(request,env){
     if(request.method==='OPTIONS')return new Response(null,{status:204,headers:CORS_HEADERS});
@@ -86,6 +132,10 @@ export default {
     try{
       if(request.method==='POST'&&url.pathname==='/api/events')return await receiveEvent(request,env);
       if(request.method==='GET'&&url.pathname==='/api/stats')return await stats(request,env);
+      if(request.method==='GET'&&url.pathname==='/api/live'){
+        if(request.headers.get('origin')!=='https://lebucheron.github.io')return json({error:'origin_forbidden'},403);
+        const id=env.MATCH_ROOM.idFromName('public-arena-v1');return env.MATCH_ROOM.get(id).fetch(request);
+      }
       if(request.method==='GET'&&url.pathname==='/health')return json({ok:true});
       return json({error:'not_found'},404);
     }catch(error){console.error(error);return json({error:'server_error'},500);}

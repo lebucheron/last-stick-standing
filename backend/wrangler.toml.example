@@ -2,6 +2,14 @@ name = "last-stick-live"
 main = "worker.js"
 compatibility_date = "2026-09-30"
 
+[[durable_objects.bindings]]
+name = "MATCH_ROOM"
+class_name = "MatchRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["MatchRoom"]
+
 [vars]
 STATS_SINCE = "REPLACE_WITH_SECURED_STATS_START"
 

@@ -4,7 +4,7 @@
   const W=420,H=460,S=40,LEFT=10,COLS=10,BASE=420,RADIUS=6,BODY=27,VISUAL_SCALE=1.08;
   const RESULT_SHOW=5.5,PLAY_LIMIT=40,FINAL_DUEL_AT=43,LOBBY_END=3,RACE_START=9;
   const ARENA_W=COLS*S,ZONE_W=ARENA_W*.25;
-  let stones=[],pieces=[],men=[],specks=[],stains=[],bursts=[],dust=[],deathLog=[],time=0,next=3,camera=0,over=0,round=0,second=-1,palette,seed=1,turn=0,portals=[],teleports=0,impact=0,winnerId=-1,tieBreak=null,paceStart=28,paceSpan=70;
+  let stones=[],pieces=[],men=[],specks=[],stains=[],bursts=[],dust=[],deathLog=[],time=0,next=3,camera=0,over=0,round=0,second=-1,palette,seed=1,turn=0,portals=[],teleports=0,impact=0,winnerId=-1,tieBreak=null,paceStart=28,paceSpan=70,networked=false,waitingForNetwork=false;
   let paused=window.openai?.widgetState?.privateContent?.paused??matchMedia('(prefers-reduced-motion: reduce)').matches;
   function random(){seed^=seed<<13;seed^=seed>>>17;seed^=seed<<5;return (seed>>>0)/4294967296;}
   function shuffled(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
@@ -15,8 +15,8 @@
   function peerClear(r,x,y){return !men.some(o=>o!==r&&o.alive&&Math.abs(o.x-x)<17&&Math.abs(o.y-y)<BODY-3);}
   function peerAhead(r,d,range=30){return men.find(o=>o!==r&&o.alive&&!o.climb&&Math.abs(o.y-r.y)<BODY-4&&(o.x-r.x)*d>0&&(o.x-r.x)*d<range);}
   function groundAt(x,y){let ground=BASE;for(const c of stones)if(x+RADIUS>c.x+.2&&x-RADIUS<c.x+S-.2&&c.y>=y-.6)ground=Math.min(ground,c.y);return ground;}
-  function reset(){
-    const bytes=new Uint32Array(1);if(globalThis.crypto?.getRandomValues)crypto.getRandomValues(bytes);else bytes[0]=Math.floor(Math.random()*4294967296);seed=bytes[0]||1;root.dataset.roundSeed=String(seed>>>0);turn=(seed>>>8)%6;
+  function reset(config={}){
+    const forced=Number(config.seed),bytes=new Uint32Array(1);if(Number.isInteger(forced)&&forced>0&&forced<=4294967295)bytes[0]=forced;else if(globalThis.crypto?.getRandomValues)crypto.getRandomValues(bytes);else bytes[0]=Math.floor(Math.random()*4294967296);seed=bytes[0]||1;root.dataset.roundSeed=String(seed>>>0);root.dataset.roundId=String(config.roundId||'');turn=(seed>>>8)%6;
     stones=[];pieces=[];portals=[];teleports=0;specks=[];stains=[];bursts=[];dust=[];deathLog=[];time=0;next=3;camera=0;over=0;second=-1;impact=0;winnerId=-1;tieBreak=null;round++;
     // Every arena gets its own rhythm. There is no hidden target duration:
     // some rounds become hostile early, while others build more slowly.
@@ -27,6 +27,7 @@
     const starts=shuffled(Array.from({length:COLS},(_,i)=>i)).slice(0,6).sort((a,b)=>a-b);
     const ids=shuffled([0,1,2,3,4,5]);men=ids.map((id,i)=>({id,x:LEFT+(starts[i]+.5)*S,y:BASE-heights[starts[i]]*S,vy:0,dir:-1,alive:true,ground:true,phase:i,climb:null,land:0,choice:0,vx:0,blocked:0,moving:0,pushCooldown:0,pushPose:0,recoil:0,shove:0,idle:0}));
     root.dataset.roundStarts=JSON.stringify(Object.fromEntries(men.map(r=>[String.fromCharCode(65+r.id),Math.round((r.x-LEFT)/S-.5)])));root.dataset.roundDeaths='[]';
+    if(Number.isFinite(Number(config.raceAt)))time=Math.max(0,Math.min(RACE_START-.05,RACE_START-(Number(config.raceAt)-Date.now())/1000));
     legend.innerHTML=Array.from({length:6},(_,i)=>'<span data-man="'+i+'"><span style="color:var(--viz-series-'+(i+1)+')">●</span> '+String.fromCharCode(65+i)+'</span>').join('');result.textContent='';
   }
   function terrainPlayable(profile){
@@ -114,15 +115,15 @@
   function finish(ids,tie){const id=ids[Math.floor(random()*ids.length)];winnerId=id;status.textContent=String.fromCharCode(65+id)+' gagne · '+Math.max(0,Math.floor(time-RACE_START))+' s'+(tie?' · combat final':'');result.textContent=status.textContent;over=RESULT_SHOW;}
   function beginTieBreak(ids,duration=4.2,subtitle='LES DEUX DERNIERS RÈGLENT ÇA'){const finalists=[...new Set(ids)];if(finalists.length!==2)return false;const winner=finalists[Math.floor(random()*finalists.length)],loser=finalists.find(id=>id!==winner);if(men.find(r=>r.id===loser)?.alive){deathLog.push({runner:String.fromCharCode(65+loser),cause:'combat',at:Math.max(0,Math.round((time-RACE_START)*10)/10)});root.dataset.roundDeaths=JSON.stringify(deathLog);}tieBreak={ids:finalists,winner,left:duration,total:duration,subtitle};status.textContent='Combat final · '+finalists.map(id=>String.fromCharCode(65+id)).join(' vs ');result.textContent=status.textContent;return true;}
   function climbTarget(r,d){
-    const x=r.x+d*20;const surfaces=stones.filter(c=>x+RADIUS>c.x&&x-RADIUS<c.x+S&&r.y-c.y>2&&r.y-c.y<=S+.5).sort((a,b)=>a.y-b.y);
-    for(const c of surfaces){const tx=d>0?c.x+RADIUS+3:c.x+S-RADIUS-3;if(Math.abs(tx-r.x)>35||!clearBody(tx,c.y)||!peerClear(r,tx,c.y))continue;
+    const raw=r.x+d*20,x=wrapX(raw),warped=x!==raw;const surfaces=stones.filter(c=>x+RADIUS>c.x&&x-RADIUS<c.x+S&&r.y-c.y>2&&r.y-c.y<=S+.5).sort((a,b)=>a.y-b.y);
+    for(const c of surfaces){const tx=d>0?c.x+RADIUS+3:c.x+S-RADIUS-3,sx=warped?x:r.x;if(Math.abs(tx-sx)>35||!clearBody(tx,c.y)||!peerClear(r,tx,c.y))continue;
       if(men.some(o=>o!==r&&o.alive&&o.climb&&Math.abs(o.climb.tx-tx)<20&&Math.abs(o.climb.ty-c.y)<8))continue;
-      let clear=true;for(let k=1;k<=6;k++)if(!clearBody(r.x,r.y+(c.y-r.y)*k/6))clear=false;
-      if(clear)return {sx:r.x,sy:r.y,tx,ty:c.y,t:0};
+      let clear=true;for(let k=1;k<=6;k++)if(!clearBody(sx,r.y+(c.y-r.y)*k/6))clear=false;
+      if(clear)return {sx,sy:r.y,tx,ty:c.y,t:0,warped};
     }return null;
   }
   function update(dt){
-    impact=Math.max(0,impact-dt);for(const p of portals)p.life-=dt;portals=portals.filter(p=>p.life>0);blood(dt);if(over){over-=dt;if(over<=0)reset();return;}if(tieBreak){time+=dt;tieBreak.left-=dt;if(tieBreak.left<=0){const winner=tieBreak.winner;tieBreak=null;finish([winner],true);}return;}time+=dt;
+    impact=Math.max(0,impact-dt);for(const p of portals)p.life-=dt;portals=portals.filter(p=>p.life>0);blood(dt);if(waitingForNetwork)return;if(over){over-=dt;if(over<=0){if(networked){waitingForNetwork=true;status.textContent='Synchronisation de la prochaine manche…';}else reset();}return;}if(tieBreak){time+=dt;tieBreak.left-=dt;if(tieBreak.left<=0){const winner=tieBreak.winner;tieBreak=null;finish([winner],true);}return;}time+=dt;
     if(time<LOBBY_END){const joined=Number(root.dataset?.lobbyCount||0),marker=-100-joined;if(second!==marker){second=marker;status.textContent='Salle d’attente · '+joined+'/5 adversaires';}return;}
     if(time<RACE_START){const count=Math.max(1,Math.ceil(RACE_START-time));if(second!==-count){second=-count;status.textContent='Choisis tes stickmen · départ dans '+count;}return;}
     const elapsed=time-RACE_START,aliveNow=men.filter(r=>r.alive),aliveCount=aliveNow.length;
@@ -184,7 +185,7 @@
       const accel=r.ground?360:160;r.vx+=Math.max(-accel*dt,Math.min(accel*dt,desired-r.vx));
       const rawX=r.x+r.vx*dt,nx=wrapX(rawX),crossed=nx!==rawX;let didWarp=false;
       if(crossed?exitClear(r,nx,r.y):clearBody(nx,r.y)&&peerClear(r,nx,r.y)){if(crossed){portals.push({x:r.x< W/2?LEFT:W-LEFT,y:r.y-13,life:.35,color:r.id},{x:nx<W/2?LEFT:W-LEFT,y:r.y-13,life:.35,color:r.id});teleports++;didWarp=true;r.choice=0;}r.x=nx;r.blocked=0;}
-      else if(r.ground){if(r.blocked>.12&&tryPush(r)){r.blocked=0;}const c=climbTarget(r,r.dir);if(c){r.climb=c;r.ground=false;r.vx=0;r.vy=0;continue;}r.vx=0;r.blocked+=dt;if(r.blocked>.18){r.dir*=-1;r.choice=.35+random()*.25;r.blocked=0;}}
+      else if(r.ground){if(r.blocked>.12&&tryPush(r)){r.blocked=0;}const c=climbTarget(r,r.dir);if(c){if(c.warped){portals.push({x:r.x<W/2?LEFT:W-LEFT,y:r.y-13,life:.35,color:r.id},{x:c.sx<W/2?LEFT:W-LEFT,y:r.y-13,life:.35,color:r.id});teleports++;r.x=c.sx;}r.climb=c;r.ground=false;r.vx=0;r.vy=0;continue;}r.vx=0;r.blocked+=dt;if(r.blocked>.18){r.dir*=-1;r.choice=.35+random()*.25;r.blocked=0;}}
       else r.vx=0;
       const oldY=r.y;r.vy+=500*dt;let ny=r.y+r.vy*dt;const floor=groundAt(r.x,oldY);
       if(ny>=floor){ny=floor;if(!r.ground&&r.vy>80)r.land=.17;r.vy=0;r.ground=true;}else r.ground=false;
@@ -250,6 +251,8 @@
   function pause(value){paused=value;button.textContent=paused?'Animer':'Pause';}
   button.onclick=()=>{pause(!paused);window.openai?.setWidgetState?.({privateContent:{paused},modelContent:{animation:'Parcours de stickmen, pièces de Tetris',paused}}).catch(()=>{});};
   window.addEventListener('openai:set_globals',e=>{const p=e.detail?.globals?.widgetState?.privateContent?.paused;if(typeof p==='boolean')pause(p);});
+  window.addEventListener('laststick:round',event=>{networked=true;waitingForNetwork=false;root.dataset.networked='1';reset(event.detail||{});pause(false);});
+  window.addEventListener('laststick:waiting',()=>{networked=true;waitingForNetwork=true;root.dataset.networked='1';status.textContent='Manche en cours · prochaine course en préparation';});
   const d=Math.min(devicePixelRatio||1,2);canvas.width=W*d;canvas.height=H*d;ctx.setTransform(d,0,0,d,0,0);reset();pause(paused);draw();
   let last=0,acc=0;function frame(t){const delta=Math.min(.08,(t-last)/1000);last=t;if(!paused){acc+=delta;while(acc>=1/60){update(1/60);acc-=1/60;}}draw();if(root.isConnected)requestAnimationFrame(frame);}requestAnimationFrame(frame);
 })();

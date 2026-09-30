@@ -24,7 +24,7 @@
       return clean;
     }catch{return blankEconomy();}
   }
-  let economy=loadEconomy(),selected='A',locked=false,finished=false,betPlaced=false,settled=false,balance=economy.balance,jackpot=economy.jackpot,playerBets=[],opponentBets=[],lobbyTimers=[],raceStartedAt=0,roundId='';
+  let economy=loadEconomy(),selected='A',locked=false,finished=false,betPlaced=false,settled=false,balance=economy.balance,jackpot=economy.jackpot,playerBets=[],opponentBets=[],lobbyTimers=[],raceStartedAt=0,roundId='',networkCounts=null;
   root.dataset.selectedRunner=selected;
 
   function report(type,data={}){
@@ -49,12 +49,20 @@
   function randomRunner(){const data=new Uint32Array(1);crypto.getRandomValues(data);return RUNNERS[data[0]%RUNNERS.length];}
   function startLobby(){
     lobbyTimers.forEach(clearTimeout);lobbyTimers=[];opponentBets=[];root.dataset.lobbyCount='0';updateMarket();
+    if(root.dataset.networked==='1'){if(!networkCounts)try{networkCounts=JSON.parse(root.dataset.liveMarket||'null');}catch{}applyNetworkMarket();return;}
     for(let index=0;index<OPPONENTS;index++)lobbyTimers.push(setTimeout(()=>{
       let runner=randomRunner();
       if(index===OPPONENTS-1){const used=new Set([...opponentBets,...playerBets].map(b=>b.runner));if(used.size===1&&used.has(runner))runner=RUNNERS[(RUNNERS.indexOf(runner)+1)%RUNNERS.length];}
       opponentBets.push({runner,stake:STAKE});root.dataset.lobbyCount=String(opponentBets.length);updateMarket();
     },350+index*450));
   }
+  function applyNetworkMarket(){
+    if(!networkCounts)return;opponentBets=[];
+    for(const runner of RUNNERS)for(let i=0;i<Number(networkCounts[runner]||0);i++)opponentBets.push({runner,stake:STAKE});
+    for(const local of playerBets){const index=opponentBets.findIndex(b=>b.runner===local.runner);if(index>=0)opponentBets.splice(index,1);}
+    root.dataset.lobbyCount=root.dataset.livePlayers||'1';updateMarket();
+  }
+  window.addEventListener('laststick:market',event=>{networkCounts=event.detail?.counts||null;applyNetworkMarket();});
   function bets(includePreview=false){const all=opponentBets.concat(playerBets);if(includePreview)all.push({runner:selected,stake:STAKE,user:true,preview:true});return all;}
   function poolByRunner(includePreview=false){const totals=Object.fromEntries(RUNNERS.map(id=>[id,0]));for(const bet of bets(includePreview))totals[bet.runner]+=bet.stake;return totals;}
   function marketValid(all){return all.length>=2&&new Set(all.map(b=>b.runner)).size>=2;}
@@ -124,7 +132,7 @@
     if(text.startsWith('Choisis')){if(finished){reopenChoice();finished=false;}return;}
     if(text.startsWith('Dernier debout')){
       lockChoice(false);
-      if(!raceStartedAt){raceStartedAt=Date.now();roundId=crypto.randomUUID?.()||String(raceStartedAt);report('race_started',{round_id:roundId,seed:Number(root.dataset.roundSeed)||null,choice:playerBets[0]?.runner||null,choices:playerBets.map(b=>b.runner),bet_placed:betPlaced});}
+      if(!raceStartedAt){raceStartedAt=Date.now();roundId=root.dataset.roundId||crypto.randomUUID?.()||String(raceStartedAt);report('race_started',{round_id:roundId,seed:Number(root.dataset.roundSeed)||null,choice:playerBets[0]?.runner||null,choices:playerBets.map(b=>b.runner),bet_placed:betPlaced});}
     }
     const winner=text.match(/^([A-F]) gagne/);
     if(!winner)return;
