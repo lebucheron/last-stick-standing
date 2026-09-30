@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Jouer · Last Stick Standing v0.1</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main id="stick-tetris" class="game-shell">
+    <a class="back-link" href="index.html">← Présentation · v0.1</a>
+    <header class="game-bar">
+      <div class="brand-lockup">
+        <span class="forest-mark" aria-hidden="true">F</span>
+        <div>
+          <p class="eyebrow">FOREST · ARENA</p>
+          <h1>Last Stick Standing</h1>
+        </div>
+      </div>
+      <div class="wallet" aria-label="Solde de démonstration">
+        <span>Crédits test</span>
+        <strong id="demo-balance">12 500 CR</strong>
+      </div>
+    </header>
+
+    <section class="arena-card" aria-labelledby="arena-title">
+      <div class="arena-head">
+        <div>
+          <span class="live-pill"><i></i> EN DIRECT</span>
+          <span class="round-id">MANCHE #0248</span>
+        </div>
+        <button id="st-pause" class="icon-button" type="button">Pause</button>
+      </div>
+
+      <div class="status-line">
+        <strong id="st-status">Dernier debout</strong>
+        <span class="rule">Le dernier survivant gagne</span>
+      </div>
+
+      <canvas aria-label="Six stickmen colorés escaladent des pièces grises, traversent les portails latéraux, se poussent sous la menace et tentent d'être le dernier survivant."></canvas>
+
+      <div id="st-legend" class="legend"></div>
+    </section>
+
+    <section class="bet-panel" aria-labelledby="bet-title">
+      <div class="panel-title">
+        <div>
+          <p class="eyebrow">TON PRONOSTIC</p>
+          <h2 id="bet-title">Qui restera debout ?</h2>
+        </div>
+        <span id="bet-state" class="bet-state">Sélection ouverte</span>
+      </div>
+
+      <div class="market-strip" aria-label="État du pot commun">
+        <div><span>Joueurs</span><strong id="player-count">5</strong></div>
+        <div><span>Pot commun</span><strong id="pool-total">2 500 CR</strong></div>
+        <div><span>Jackpot</span><strong id="jackpot-total">0 CR</strong></div>
+        <b id="market-status" class="market-status">POT ACTIF</b>
+      </div>
+
+      <div id="runner-grid" class="runner-grid" aria-label="Choisir un stickman">
+        <button class="runner selected" type="button" data-runner="A" style="--runner:var(--viz-series-1)"><span>A</span><small>BLEU</small></button>
+        <button class="runner" type="button" data-runner="B" style="--runner:var(--viz-series-2)"><span>B</span><small>ORANGE</small></button>
+        <button class="runner" type="button" data-runner="C" style="--runner:var(--viz-series-3)"><span>C</span><small>VERT</small></button>
+        <button class="runner" type="button" data-runner="D" style="--runner:var(--viz-series-4)"><span>D</span><small>ROSE</small></button>
+        <button class="runner" type="button" data-runner="E" style="--runner:var(--viz-series-5)"><span>E</span><small>VIOLET</small></button>
+        <button class="runner" type="button" data-runner="F" style="--runner:var(--viz-series-6)"><span>F</span><small>JAUNE</small></button>
+      </div>
+
+      <div class="bet-slip">
+        <div>
+          <span>Mise démo</span>
+          <strong>500 CR</strong>
+        </div>
+        <div>
+          <span>Choix</span>
+          <strong id="selected-runner">Stickman A</strong>
+        </div>
+        <div>
+          <span>Gain estimé</span>
+          <strong id="potential-payout">Calcul…</strong>
+        </div>
+        <button id="place-bet" class="bet-button" type="button">Miser sur A</button>
+      </div>
+
+      <div id="settlement" class="settlement" hidden>
+        <div class="settlement-title">
+          <span id="winner-swatch">A</span>
+          <div><small>RÉSULTAT DE LA MANCHE</small><strong id="winner-label">Stickman A gagne</strong></div>
+        </div>
+        <div class="settlement-grid">
+          <div><span>Pot final</span><strong id="final-pool">0 CR</strong></div>
+          <div><span>Ta mise</span><strong id="final-stake">0 CR</strong></div>
+          <div><span>Versement</span><strong id="final-payout">0 CR</strong></div>
+          <div><span>Bénéfice net</span><strong id="final-profit">0 CR</strong></div>
+        </div>
+      </div>
+      <p class="prototype-note">Simulation locale · 95 % du pot revient aux choix gagnants</p>
+    </section>
+
+    <span id="st-result" class="sr-only" aria-live="polite"></span>
+
+    <section id="feedback" class="feedback-panel" aria-labelledby="feedback-title">
+      <p class="eyebrow">RETOUR DE TEST</p>
+      <h2 id="feedback-title">Alors, cette manche ?</h2>
+      <div class="reaction-list" role="group" aria-label="Impression générale">
+        <button type="button" data-reaction="Tendu">😰 Tendu</button>
+        <button type="button" data-reaction="Drôle">😂 Drôle</button>
+        <button type="button" data-reaction="À rejouer">🔥 À rejouer</button>
+        <button type="button" data-reaction="Confus">😕 Confus</button>
+      </div>
+      <label for="feedback-text">Un détail à changer ? <span>facultatif</span></label>
+      <textarea id="feedback-text" rows="3" maxlength="500" placeholder="Écris ton impression en quelques mots…"></textarea>
+      <button id="share-feedback" class="share-feedback" type="button">Partager mon retour</button>
+      <output id="feedback-state" aria-live="polite"></output>
+    </section>
+  </main>
+  <script src="game.js"></script>
+  <script src="ui.js"></script>
+  <script src="feedback.js"></script>
+</body>
+</html>
