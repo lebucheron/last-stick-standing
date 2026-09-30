@@ -151,7 +151,7 @@
     for(const r of movers){
       if(!r.alive)continue;const startX=r.x;r.land=Math.max(0,r.land-dt);r.choice-=dt;r.pushCooldown=Math.max(0,r.pushCooldown-dt);r.pushPose=Math.max(0,r.pushPose-dt);r.recoil=Math.max(0,r.recoil-dt);
       if(r.climb){const c=r.climb;const nextT=c.t+dt,u=Math.min(1,nextT/.68),lift=Math.min(1,u/.68),e=lift*lift*(3-2*lift),x=c.sx+(c.tx-c.sx)*Math.max(0,(u-.68)/.32),y=c.sy+(c.ty-c.sy)*e;
-        if((c.warped&&u<=.68||clearBody(x,y))&&peerClear(r,x,y)){c.t=nextT;r.x=x;r.y=y;r.blocked=0;}else{r.blocked+=dt;if(r.blocked>.5){r.climb=null;r.vy=0;r.ground=false;r.choice=0;}}
+        if((c.warped||clearBody(x,y))&&peerClear(r,x,y)){c.t=nextT;r.x=x;r.y=y;r.blocked=0;}else{r.blocked+=dt;if(r.blocked>.5){r.climb=null;r.vy=0;r.ground=false;r.choice=0;}}
         if(u===1&&r.climb){r.climb=null;r.ground=true;r.land=.12;r.vy=0;r.vx=r.dir*25;}continue;
       }
       if(Math.abs(r.shove)>1){
