@@ -114,7 +114,7 @@
   }
   function finish(ids,tie){const id=ids[Math.floor(random()*ids.length)];winnerId=id;status.textContent=String.fromCharCode(65+id)+' gagne · '+Math.max(0,Math.floor(time-RACE_START))+' s'+(tie?' · combat final':'');result.textContent=status.textContent;over=RESULT_SHOW;}
   function serverResult(data){
-    if(data.roundId!==root.dataset.roundId||!/^[A-F]$/.test(data.winner))return;const seconds=Math.max(0,Math.round(Number(data.durationMs||0)/1000));
+    if(data.roundId!==root.dataset.roundId||!/^[A-F]$/.test(data.winner))return;const received=Number(data.durationMs),seconds=Number.isFinite(received)&&received>0?Math.round(received/1000):Math.max(0,Math.floor(time-RACE_START));
     winnerId=data.winner.charCodeAt(0)-65;tieBreak=null;waitingForNetwork=false;status.textContent=data.winner+' gagne · '+seconds+' s · résultat serveur';result.textContent=status.textContent;over=RESULT_SHOW;
   }
   function beginTieBreak(ids,duration=4.2,subtitle='LES DEUX DERNIERS RÈGLENT ÇA'){const finalists=[...new Set(ids)];if(finalists.length!==2)return false;const winner=finalists[Math.floor(random()*finalists.length)],loser=finalists.find(id=>id!==winner);if(men.find(r=>r.id===loser)?.alive){deathLog.push({runner:String.fromCharCode(65+loser),cause:'combat',at:Math.max(0,Math.round((time-RACE_START)*10)/10)});root.dataset.roundDeaths=JSON.stringify(deathLog);}tieBreak={ids:finalists,winner,left:duration,total:duration,subtitle};status.textContent='Combat final · '+finalists.map(id=>String.fromCharCode(65+id)).join(' vs ');result.textContent=status.textContent;return true;}

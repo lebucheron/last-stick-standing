@@ -118,7 +118,7 @@ export class MatchRoom{
       const picks=Array.isArray(round.bets[session])?round.bets[session].slice(0,2):[];picks[data.ticket-1]=data.choice;round.bets[session]=picks.filter(Boolean);await this.state.storage.put('round',round);this.broadcast(this.market(round));
     }
     if(data.type==='finished'&&data.roundId===round.id&&!round.closing&&Date.now()>=round.raceAt+5000){
-      round.closing=true;round.result={winner:/^[A-F]$/.test(data.winner)?data.winner:null,durationMs:Number.isFinite(Number(data.durationMs))?Math.max(5000,Math.min(120000,Number(data.durationMs))):null};await this.state.storage.put('round',round);await this.state.storage.setAlarm(Date.now()+8000);this.broadcast({type:'result',roundId:round.id,...round.result});
+      round.closing=true;round.result={winner:/^[A-F]$/.test(data.winner)?data.winner:null,durationMs:Math.max(5000,Math.min(120000,Date.now()-round.raceAt))};await this.state.storage.put('round',round);await this.state.storage.setAlarm(Date.now()+8000);this.broadcast({type:'result',roundId:round.id,...round.result});
     }
   }
   async webSocketClose(){const round=await this.current();this.broadcast(this.market(round));}
