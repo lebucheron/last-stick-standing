@@ -18,8 +18,9 @@
         </div>
       </div>
       <div class="wallet" aria-label="Solde de démonstration">
-        <span>Crédits test</span>
+        <span>Portefeuille fictif</span>
         <strong id="demo-balance">12 500 CR</strong>
+        <small id="wallet-record">0 V · 0 D</small>
       </div>
     </header>
 
@@ -95,7 +96,12 @@
           <div><span>Bénéfice net</span><strong id="final-profit">0 CR</strong></div>
         </div>
       </div>
-      <p class="prototype-note">Simulation locale · 95 % du pot revient aux choix gagnants</p>
+      <div class="economy-strip" aria-label="Bilan du portefeuille fictif">
+        <div><span>Bénéfice net</span><strong id="economy-profit">0 CR</strong></div>
+        <div><span>Total misé</span><strong id="economy-wagered">0 CR</strong></div>
+        <div><span>Dernière manche</span><strong id="economy-last">Aucune</strong></div>
+      </div>
+      <p id="economy-note" class="prototype-note">Crédits fictifs enregistrés sur cet appareil · 95 % du pot redistribué</p>
     </section>
 
     <span id="st-result" class="sr-only" aria-live="polite"></span>
