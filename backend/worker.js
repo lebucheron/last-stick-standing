@@ -11,12 +11,19 @@ function json(data,status=200,extra={}){
 }
 
 function validId(value){return typeof value==='string'&&/^[a-zA-Z0-9-]{8,80}$/.test(value);}
+function validRuleset(value){return typeof value==='string'&&/^[A-Za-z0-9._-]{1,24}$/.test(value);}
 function cleanDeaths(value){
   if(!Array.isArray(value))return [];
   return value.slice(0,6).flatMap(item=>{
     const runner=String(item?.runner||''),cause=String(item?.cause||''),at=Number(item?.at);
     return /^[A-F]$/.test(runner)&&['impact','écrasement','combat'].includes(cause)&&Number.isFinite(at)&&at>=0&&at<=120?[{runner,cause,at:Math.round(at*10)/10}]:[];
   });
+}
+function cleanStarts(value){
+  if(!value||typeof value!=='object'||Array.isArray(value))return null;
+  const starts={};
+  for(const runner of ['A','B','C','D','E','F'])if(Number.isInteger(value[runner])&&value[runner]>=0&&value[runner]<=9)starts[runner]=value[runner];
+  return Object.keys(starts).length===6?starts:null;
 }
 
 async function receiveEvent(request,env){
@@ -49,10 +56,12 @@ async function receiveEvent(request,env){
     const winnerStart=Number.isInteger(event.winner_start)&&event.winner_start>=0&&event.winner_start<=9?event.winner_start:null;
     const roundSeed=Number.isInteger(event.seed)&&event.seed>=1&&event.seed<=4294967295?event.seed:null;
     const deaths=event.type==='race_finished'?JSON.stringify(cleanDeaths(event.deaths)):null;
+    const ruleset=validRuleset(event.ruleset)?event.ruleset:'legacy';
+    const starts=event.type==='race_finished'&&cleanStarts(event.starts)?JSON.stringify(cleanStarts(event.starts)):null;
     await env.DB.prepare(`INSERT INTO events
-      (session_id, type, round_id, seed, winner, choice, bet_placed, won, duration_ms, sudden_death, winner_start, deaths, is_test, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .bind(event.session_id,event.type,String(event.round_id||'').slice(0,80)||null,roundSeed,/^[A-F]$/.test(event.winner)?event.winner:null,/^[A-F]$/.test(event.choice)?event.choice:null,event.bet_placed?1:0,event.won?1:0,duration,event.sudden_death?1:0,winnerStart,deaths,isTest,now).run();
+      (session_id, type, round_id, seed, winner, choice, bet_placed, won, duration_ms, sudden_death, winner_start, deaths, ruleset, starts, is_test, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(event.session_id,event.type,String(event.round_id||'').slice(0,80)||null,roundSeed,/^[A-F]$/.test(event.winner)?event.winner:null,/^[A-F]$/.test(event.choice)?event.choice:null,event.bet_placed?1:0,event.won?1:0,duration,event.sudden_death?1:0,winnerStart,deaths,ruleset,starts,isTest,now).run();
   }
   return json({ok:true},202);
 }
@@ -60,23 +69,33 @@ async function receiveEvent(request,env){
 async function stats(request,env){
   const expected=env.ADMIN_TOKEN;
   if(!expected||request.headers.get('authorization')!==`Bearer ${expected}`)return json({error:'unauthorized'},401);
-  const since=env.STATS_SINCE||'1970-01-01T00:00:00Z';
-  const [active,visitors,rounds,average,winners,starts,causes,combat,recent]=await Promise.all([
+  const since=env.STATS_SINCE||'1970-01-01T00:00:00Z',url=new URL(request.url),requested=url.searchParams.get('ruleset')||'R2',selected=requested==='all'||validRuleset(requested)?requested:'R2';
+  const filter=selected==='all'?'':' AND COALESCE(ruleset,\'legacy\')=?',scope=[since,...(selected==='all'?[]:[selected])];
+  const withFinished=`WITH finished AS (SELECT e.* FROM events e JOIN (SELECT MIN(id) id FROM events WHERE type='race_finished' AND COALESCE(is_test,0)=0 AND created_at>=?${filter} GROUP BY round_id) one ON one.id=e.id)`;
+  const query=(sql,extra=[])=>env.DB.prepare(`${withFinished} ${sql}`).bind(...scope,...extra);
+  const [active,visitors,rounds,versions]=await Promise.all([
     env.DB.prepare("SELECT COUNT(*) count FROM sessions WHERE COALESCE(is_test,0)=0 AND datetime(last_seen) >= datetime('now','-45 seconds')").first(),
     env.DB.prepare("SELECT COUNT(*) count FROM sessions WHERE COALESCE(is_test,0)=0 AND datetime(first_seen) >= date('now')").first(),
-    env.DB.prepare("SELECT COUNT(*) count FROM events WHERE type='race_finished' AND COALESCE(is_test,0)=0 AND created_at>=?").bind(since).first(),
-    env.DB.prepare("SELECT AVG(duration_ms) value FROM events WHERE type='race_finished' AND COALESCE(is_test,0)=0 AND created_at>=?").bind(since).first(),
-    env.DB.prepare("SELECT winner, COUNT(*) count FROM events WHERE type='race_finished' AND COALESCE(is_test,0)=0 AND created_at>=? GROUP BY winner").bind(since).all(),
-    env.DB.prepare("SELECT winner_start, COUNT(*) count FROM events WHERE type='race_finished' AND winner_start IS NOT NULL AND COALESCE(is_test,0)=0 AND created_at>=? GROUP BY winner_start").bind(since).all(),
-    env.DB.prepare("SELECT json_extract(value,'$.cause') cause, COUNT(*) count FROM events, json_each(events.deaths) WHERE events.type='race_finished' AND deaths IS NOT NULL AND json_valid(deaths) AND COALESCE(is_test,0)=0 AND events.created_at>=? GROUP BY cause").bind(since).all(),
-    env.DB.prepare("SELECT COUNT(*) count FROM events WHERE type='race_finished' AND sudden_death=1 AND COALESCE(is_test,0)=0 AND created_at>=?").bind(since).first(),
-    env.DB.prepare("SELECT winner, won, duration_ms, sudden_death, winner_start, seed, created_at FROM events WHERE type='race_finished' AND COALESCE(is_test,0)=0 AND created_at>=? ORDER BY id DESC LIMIT 12").bind(since).all()
+    query('SELECT COUNT(*) count FROM finished').first(),
+    env.DB.prepare("SELECT COALESCE(ruleset,'legacy') ruleset, COUNT(DISTINCT round_id) count FROM events WHERE type='race_finished' AND COALESCE(is_test,0)=0 AND created_at>=? GROUP BY COALESCE(ruleset,'legacy') ORDER BY MAX(id) DESC").bind(since).all()
+  ]);
+  const roundCount=rounds?.count||0,medianOffset=Math.max(0,Math.floor((roundCount-1)*.5)),p90Offset=Math.max(0,Math.floor((roundCount-1)*.9));
+  const [duration,median,p90,winners,starts,appearances,causes,combat,recent]=await Promise.all([
+    query('SELECT AVG(duration_ms) average, MIN(duration_ms) minimum, MAX(duration_ms) maximum FROM finished').first(),
+    query('SELECT duration_ms value FROM finished ORDER BY duration_ms LIMIT 1 OFFSET ?',[medianOffset]).first(),
+    query('SELECT duration_ms value FROM finished ORDER BY duration_ms LIMIT 1 OFFSET ?',[p90Offset]).first(),
+    query('SELECT winner, COUNT(*) count FROM finished GROUP BY winner').all(),
+    query('SELECT winner_start, COUNT(*) count FROM finished WHERE winner_start IS NOT NULL GROUP BY winner_start').all(),
+    query("SELECT CAST(value AS INTEGER) start, COUNT(*) count FROM finished, json_each(finished.starts) WHERE starts IS NOT NULL AND json_valid(starts) GROUP BY CAST(value AS INTEGER)").all(),
+    query("SELECT json_extract(value,'$.cause') cause, COUNT(*) count FROM finished, json_each(finished.deaths) WHERE deaths IS NOT NULL AND json_valid(deaths) GROUP BY cause").all(),
+    query('SELECT COUNT(*) count FROM finished WHERE sudden_death=1').first(),
+    query('SELECT winner, won, duration_ms, sudden_death, winner_start, seed, ruleset, created_at FROM finished ORDER BY id DESC LIMIT 12').all()
   ]);
   const byWinner=Object.fromEntries((winners.results||[]).map(row=>[row.winner,row.count]));
   const byStart=Object.fromEntries((starts.results||[]).map(row=>[row.winner_start,row.count]));
+  const byAppearance=Object.fromEntries((appearances.results||[]).map(row=>[row.start,row.count]));
   const byCause=Object.fromEntries((causes.results||[]).map(row=>[row.cause,row.count]));
-  const roundCount=rounds?.count||0;
-  return json({active_now:active?.count||0,visitors_today:visitors?.count||0,rounds_today:roundCount,average_duration_ms:average?.value||null,combat_final_count:combat?.count||0,combat_final_rate:roundCount?(combat?.count||0)/roundCount:0,winners:byWinner,winning_starts:byStart,death_causes:byCause,recent_rounds:recent.results||[]},200,{'cache-control':'no-store'});
+  return json({active_now:active?.count||0,visitors_today:visitors?.count||0,rounds_today:roundCount,selected_ruleset:selected,available_rulesets:versions.results||[],average_duration_ms:duration?.average||null,median_duration_ms:median?.value||null,p90_duration_ms:p90?.value||null,min_duration_ms:duration?.minimum||null,max_duration_ms:duration?.maximum||null,combat_final_count:combat?.count||0,combat_final_rate:roundCount?(combat?.count||0)/roundCount:0,winners:byWinner,winning_starts:byStart,start_appearances:byAppearance,death_causes:byCause,recent_rounds:recent.results||[]},200,{'cache-control':'no-store'});
 }
 
 function nextSeed(){const data=new Uint32Array(1);crypto.getRandomValues(data);return data[0]||1;}

@@ -28,7 +28,7 @@
   root.dataset.selectedRunner=selected;
 
   function report(type,data={}){
-    window.dispatchEvent(new CustomEvent('laststick:event',{detail:{type,...data}}));
+    window.dispatchEvent(new CustomEvent('laststick:event',{detail:{type,ruleset:root.dataset.ruleset||'legacy',...data}}));
   }
 
   const credits=value=>Math.floor(value).toLocaleString('fr-FR')+' CR';
@@ -158,7 +158,7 @@
     if(serverWallet){
       state.textContent='Résultat reçu · règlement serveur…';updateMarket();potentialEl.textContent='Calcul du versement';marketEl.textContent='RÈGLEMENT';marketEl.classList.remove('pending');settled=true;root.dataset.completedRounds=String(Number(root.dataset.completedRounds||0)+1);
       let starts={},deaths=[];try{starts=JSON.parse(root.dataset.roundStarts||'{}');}catch{}try{deaths=JSON.parse(root.dataset.roundDeaths||'[]');}catch{}
-      report('race_finished',{round_id:roundId,seed:Number(root.dataset.roundSeed)||null,winner:winner[1],winner_start:starts[winner[1]],deaths,choice:playerBets[0]?.runner||null,choices:playerBets.map(b=>b.runner),bet_placed:betPlaced,won:userWinningStake>0,duration_ms:raceStartedAt?Date.now()-raceStartedAt:null,sudden_death:text.includes('combat final')});raceStartedAt=0;roundId='';return;
+      report('race_finished',{round_id:roundId,seed:Number(root.dataset.roundSeed)||null,winner:winner[1],winner_start:starts[winner[1]],starts,deaths,choice:playerBets[0]?.runner||null,choices:playerBets.map(b=>b.runner),bet_placed:betPlaced,won:userWinningStake>0,duration_ms:raceStartedAt?Date.now()-raceStartedAt:null,sudden_death:text.includes('combat final')});raceStartedAt=0;roundId='';return;
     }
     let payout=0;
     if(!valid){if(betPlaced){balance+=localStake;economy.pending=0;saveEconomy();showBalance();payout=localStake;}state.textContent='Manche annulée · mises rendues';}
@@ -180,7 +180,7 @@
     let starts={},deaths=[];
     try{starts=JSON.parse(root.dataset.roundStarts||'{}');}catch{}
     try{deaths=JSON.parse(root.dataset.roundDeaths||'[]');}catch{}
-    report('race_finished',{round_id:roundId,seed:Number(root.dataset.roundSeed)||null,winner:winner[1],winner_start:starts[winner[1]],deaths,choice:playerBets[0]?.runner||null,choices:playerBets.map(b=>b.runner),bet_placed:betPlaced,won:userWinningStake>0,duration_ms:raceStartedAt?Date.now()-raceStartedAt:null,sudden_death:text.includes('combat final')});
+    report('race_finished',{round_id:roundId,seed:Number(root.dataset.roundSeed)||null,winner:winner[1],winner_start:starts[winner[1]],starts,deaths,choice:playerBets[0]?.runner||null,choices:playerBets.map(b=>b.runner),bet_placed:betPlaced,won:userWinningStake>0,duration_ms:raceStartedAt?Date.now()-raceStartedAt:null,sudden_death:text.includes('combat final')});
     raceStartedAt=0;roundId='';
   }).observe(status,{childList:true,characterData:true,subtree:true});
 

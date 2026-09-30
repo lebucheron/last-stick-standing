@@ -24,9 +24,12 @@ CREATE TABLE IF NOT EXISTS events (
   sudden_death INTEGER NOT NULL DEFAULT 0,
   winner_start INTEGER,
   deaths TEXT,
+  ruleset TEXT NOT NULL DEFAULT 'legacy',
+  starts TEXT,
   is_test INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS events_type_date ON events(type, created_at);
 CREATE INDEX IF NOT EXISTS events_round ON events(round_id);
+CREATE INDEX IF NOT EXISTS events_ruleset_type ON events(ruleset, type, created_at);
