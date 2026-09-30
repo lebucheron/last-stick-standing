@@ -2,9 +2,9 @@
   const root=document.getElementById('stick-tetris'),canvas=root.querySelector('canvas'),ctx=canvas.getContext('2d');
   const status=root.querySelector('#st-status'),button=root.querySelector('#st-pause'),legend=root.querySelector('#st-legend'),result=root.querySelector('#st-result');
   const W=420,H=460,S=40,LEFT=10,COLS=10,BASE=420,RADIUS=6,BODY=27,VISUAL_SCALE=1.08;
-  const RESULT_SHOW=5.5,PLAY_LIMIT=40,FINAL_DUEL_AT=43,LOBBY_END=3,RACE_START=9;
+  const RESULT_SHOW=7.5,PLAY_LIMIT=40,FINAL_DUEL_AT=43,LOBBY_END=3,RACE_START=9;
   const ARENA_W=COLS*S,ZONE_W=ARENA_W*.25;
-  let stones=[],pieces=[],men=[],specks=[],stains=[],bursts=[],dust=[],deathLog=[],time=0,next=3,camera=0,over=0,round=0,second=-1,palette,seed=1,turn=0,portals=[],teleports=0,impact=0,winnerId=-1,tieBreak=null,paceStart=28,paceSpan=70,networked=false,waitingForNetwork=false;
+  let stones=[],pieces=[],men=[],specks=[],stains=[],bursts=[],dust=[],deathLog=[],time=0,next=3,camera=0,over=0,round=0,second=-1,palette,seed=1,turn=0,portals=[],teleports=0,impact=0,winnerId=-1,tieBreak=null,paceStart=28,paceSpan=70,networked=false,waitingForNetwork=false,networkRaceAt=0;
   let paused=window.openai?.widgetState?.privateContent?.paused??matchMedia('(prefers-reduced-motion: reduce)').matches;
   function random(){seed^=seed<<13;seed^=seed>>>17;seed^=seed<<5;return (seed>>>0)/4294967296;}
   function shuffled(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
@@ -16,7 +16,7 @@
   function peerAhead(r,d,range=30){return men.find(o=>o!==r&&o.alive&&!o.climb&&Math.abs(o.y-r.y)<BODY-4&&(o.x-r.x)*d>0&&(o.x-r.x)*d<range);}
   function groundAt(x,y){let ground=BASE;for(const c of stones)if(x+RADIUS>c.x+.2&&x-RADIUS<c.x+S-.2&&c.y>=y-.6)ground=Math.min(ground,c.y);return ground;}
   function reset(config={}){
-    const forced=Number(config.seed),bytes=new Uint32Array(1);if(Number.isInteger(forced)&&forced>0&&forced<=4294967295)bytes[0]=forced;else if(globalThis.crypto?.getRandomValues)crypto.getRandomValues(bytes);else bytes[0]=Math.floor(Math.random()*4294967296);seed=bytes[0]||1;root.dataset.roundSeed=String(seed>>>0);root.dataset.roundId=String(config.roundId||'');turn=(seed>>>8)%6;
+    const forced=Number(config.seed),bytes=new Uint32Array(1);if(Number.isInteger(forced)&&forced>0&&forced<=4294967295)bytes[0]=forced;else if(globalThis.crypto?.getRandomValues)crypto.getRandomValues(bytes);else bytes[0]=Math.floor(Math.random()*4294967296);seed=bytes[0]||1;networkRaceAt=Number(config.raceAt)||0;root.dataset.roundSeed=String(seed>>>0);root.dataset.roundId=String(config.roundId||'');root.dataset.raceAt=String(networkRaceAt||'');turn=(seed>>>8)%6;
     stones=[];pieces=[];portals=[];teleports=0;specks=[];stains=[];bursts=[];dust=[];deathLog=[];time=0;next=3;camera=0;over=0;second=-1;impact=0;winnerId=-1;tieBreak=null;round++;
     // Every arena gets its own rhythm. There is no hidden target duration:
     // some rounds become hostile early, while others build more slowly.
@@ -113,6 +113,10 @@
     for(const p of dust){p.life-=dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.vx*=Math.exp(-4*dt);p.vy-=7*dt;}dust=dust.filter(p=>p.life>0);
   }
   function finish(ids,tie){const id=ids[Math.floor(random()*ids.length)];winnerId=id;status.textContent=String.fromCharCode(65+id)+' gagne · '+Math.max(0,Math.floor(time-RACE_START))+' s'+(tie?' · combat final':'');result.textContent=status.textContent;over=RESULT_SHOW;}
+  function serverResult(data){
+    if(data.roundId!==root.dataset.roundId||!/^[A-F]$/.test(data.winner))return;const seconds=Math.max(0,Math.round(Number(data.durationMs||0)/1000));
+    winnerId=data.winner.charCodeAt(0)-65;tieBreak=null;waitingForNetwork=false;status.textContent=data.winner+' gagne · '+seconds+' s · résultat serveur';result.textContent=status.textContent;over=RESULT_SHOW;
+  }
   function beginTieBreak(ids,duration=4.2,subtitle='LES DEUX DERNIERS RÈGLENT ÇA'){const finalists=[...new Set(ids)];if(finalists.length!==2)return false;const winner=finalists[Math.floor(random()*finalists.length)],loser=finalists.find(id=>id!==winner);if(men.find(r=>r.id===loser)?.alive){deathLog.push({runner:String.fromCharCode(65+loser),cause:'combat',at:Math.max(0,Math.round((time-RACE_START)*10)/10)});root.dataset.roundDeaths=JSON.stringify(deathLog);}tieBreak={ids:finalists,winner,left:duration,total:duration,subtitle};status.textContent='Combat final · '+finalists.map(id=>String.fromCharCode(65+id)).join(' vs ');result.textContent=status.textContent;return true;}
   function climbTarget(r,d){
     const raw=r.x+d*20,x=wrapX(raw),warped=x!==raw;const surfaces=stones.filter(c=>x+RADIUS>c.x&&x-RADIUS<c.x+S&&r.y-c.y>2&&r.y-c.y<=S+.5).sort((a,b)=>a.y-b.y);
@@ -206,7 +210,7 @@
     ctx.strokeStyle='#879083';ctx.lineWidth=1;line([[cx,0],[cx,ballY-19]]);ctx.fillStyle='#cfd7c9';ctx.beginPath();ctx.arc(cx,ballY,19,0,Math.PI*2);ctx.fill();
     ctx.strokeStyle='#70786d';ctx.lineWidth=.8;for(let y=-12;y<=12;y+=6)line([[cx-16,ballY+y],[cx+16,ballY+y]]);for(let x=-12;x<=12;x+=6)line([[cx+x,ballY-16],[cx+x,ballY+16]]);
     const bounce=Math.abs(Math.sin(t*7))*6,swing=Math.sin(t*9)*11;ctx.save();ctx.translate(cx,danceY-bounce);ctx.strokeStyle=color;ctx.fillStyle=color;ctx.lineWidth=4;ctx.lineCap='round';ctx.lineJoin='round';ctx.beginPath();ctx.arc(0,-48,6,0,Math.PI*2);ctx.fill();line([[0,-41],[0,-19]]);line([[0,-35],[-18-swing*.35,-26-swing*.25],[-25-swing*.45,-38]]);line([[0,-34],[18+swing*.35,-28+swing*.22],[24+swing*.45,-42]]);line([[0,-19],[-11-swing*.25,-7],[-17-swing*.35,4]]);line([[0,-19],[11+swing*.25,-7],[17+swing*.35,4]]);ctx.restore();
-    ctx.textAlign='center';ctx.fillStyle=color;ctx.font='800 24px Inter,system-ui,sans-serif';ctx.fillText(String.fromCharCode(65+winnerId)+' GAGNE',cx,392);ctx.fillStyle=palette.fg;ctx.font='600 10px Inter,system-ui,sans-serif';ctx.fillText('DERNIER STICKMAN DEBOUT',cx,410);ctx.textAlign='start';
+    ctx.textAlign='center';ctx.fillStyle=color;ctx.font='800 24px Inter,system-ui,sans-serif';ctx.fillText(String.fromCharCode(65+winnerId)+' GAGNE',cx,386);ctx.fillStyle=palette.fg;ctx.font='600 10px Inter,system-ui,sans-serif';ctx.fillText('DERNIER STICKMAN DEBOUT',cx,405);ctx.fillStyle=palette.stone;ctx.font='700 9px Inter,system-ui,sans-serif';ctx.fillText('PROCHAINE MANCHE DANS '+Math.max(1,Math.ceil(over))+' S',cx,426);ctx.textAlign='start';
   }
   function suddenDeath(){
     if(!tieBreak)return;
@@ -253,6 +257,10 @@
   window.addEventListener('openai:set_globals',e=>{const p=e.detail?.globals?.widgetState?.privateContent?.paused;if(typeof p==='boolean')pause(p);});
   window.addEventListener('laststick:round',event=>{networked=true;waitingForNetwork=false;root.dataset.networked='1';reset(event.detail||{});pause(false);});
   window.addEventListener('laststick:waiting',()=>{networked=true;waitingForNetwork=true;root.dataset.networked='1';status.textContent='Manche en cours · prochaine course en préparation';});
+  window.addEventListener('laststick:server-result',event=>serverResult(event.detail||{}));
   const d=Math.min(devicePixelRatio||1,2);canvas.width=W*d;canvas.height=H*d;ctx.setTransform(d,0,0,d,0,0);reset();pause(paused);draw();
-  let last=0,acc=0;function frame(t){const delta=Math.min(.08,(t-last)/1000);last=t;if(!paused){acc+=delta;while(acc>=1/60){update(1/60);acc-=1/60;}}draw();if(root.isConnected)requestAnimationFrame(frame);}requestAnimationFrame(frame);
+  let last=0,acc=0;function frame(t){const delta=Math.min(.08,(t-last)/1000);last=t;if(!paused){
+    if(networked&&networkRaceAt&&!waitingForNetwork&&!over){const target=RACE_START+(Date.now()-networkRaceAt)/1000;let steps=0;while(time+1/60<=target&&!over&&steps<3600){update(1/60);steps++;}}
+    else{acc+=delta;while(acc>=1/60){update(1/60);acc-=1/60;}}
+  }draw();if(root.isConnected)requestAnimationFrame(frame);}requestAnimationFrame(frame);
 })();

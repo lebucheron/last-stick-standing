@@ -108,7 +108,8 @@ export class MatchRoom{
     const session=new URL(request.url).searchParams.get('session');if(!validId(session))return new Response('Invalid session',{status:400});
     const pair=new WebSocketPair(),client=pair[0],server=pair[1];this.state.acceptWebSocket(server);server.serializeAttachment({session});
     const round=await this.current();
-    if(Date.now()<round.raceAt)this.send(server,{type:'round',roundId:round.id,seed:round.seed,raceAt:round.raceAt});else this.send(server,{type:'waiting',roundId:round.id});
+    this.send(server,{type:'round',roundId:round.id,seed:round.seed,raceAt:round.raceAt,catchingUp:Date.now()>=round.raceAt});
+    if(round.closing&&round.result)this.send(server,{type:'result',roundId:round.id,...round.result});
     this.broadcast(this.market(round));return new Response(null,{status:101,webSocket:client});
   }
   async webSocketMessage(socket,message){
@@ -117,7 +118,7 @@ export class MatchRoom{
       const picks=Array.isArray(round.bets[session])?round.bets[session].slice(0,2):[];picks[data.ticket-1]=data.choice;round.bets[session]=picks.filter(Boolean);await this.state.storage.put('round',round);this.broadcast(this.market(round));
     }
     if(data.type==='finished'&&data.roundId===round.id&&!round.closing&&Date.now()>=round.raceAt+5000){
-      round.closing=true;await this.state.storage.put('round',round);await this.state.storage.setAlarm(Date.now()+6000);this.broadcast({type:'result',roundId:round.id,winner:/^[A-F]$/.test(data.winner)?data.winner:null});
+      round.closing=true;round.result={winner:/^[A-F]$/.test(data.winner)?data.winner:null,durationMs:Number.isFinite(Number(data.durationMs))?Math.max(5000,Math.min(120000,Number(data.durationMs))):null};await this.state.storage.put('round',round);await this.state.storage.setAlarm(Date.now()+8000);this.broadcast({type:'result',roundId:round.id,...round.result});
     }
   }
   async webSocketClose(){const round=await this.current();this.broadcast(this.market(round));}

@@ -130,7 +130,7 @@
     const text=status.textContent;
     if(text.startsWith('Salle d’attente')){if(finished){reopenChoice();finished=false;}return;}
     if(text.startsWith('Choisis')){if(finished){reopenChoice();finished=false;}return;}
-    if(text.startsWith('Dernier debout')){
+    if(text.startsWith('Dernier debout')||text.startsWith('TEMPÊTE')){
       lockChoice(false);
       if(!raceStartedAt){raceStartedAt=Date.now();roundId=root.dataset.roundId||crypto.randomUUID?.()||String(raceStartedAt);report('race_started',{round_id:roundId,seed:Number(root.dataset.roundSeed)||null,choice:playerBets[0]?.runner||null,choices:playerBets.map(b=>b.runner),bet_placed:betPlaced});}
     }
