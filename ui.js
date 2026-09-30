@@ -121,7 +121,7 @@
   new MutationObserver(()=>{
     const text=status.textContent;
     if(text.startsWith('Salle d’attente')){if(finished){reopenChoice();finished=false;}return;}
-    if(text.startsWith('Choisis ton stickman')){if(finished){reopenChoice();finished=false;}return;}
+    if(text.startsWith('Choisis')){if(finished){reopenChoice();finished=false;}return;}
     if(text.startsWith('Dernier debout')){
       lockChoice(false);
       if(!raceStartedAt){raceStartedAt=Date.now();roundId=crypto.randomUUID?.()||String(raceStartedAt);report('race_started',{round_id:roundId,choice:playerBets[0]?.runner||null,choices:playerBets.map(b=>b.runner),bet_placed:betPlaced});}

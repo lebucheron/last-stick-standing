@@ -14,7 +14,7 @@ La page `index.html` présente la v0.1, puis `play.html` lance la démonstration
 - Escalade, chute, collisions et poussées sous menace uniquement.
 - Circulation autonome hors danger et réaction limitée aux zones déjà visibles.
 - Interface de pronostic avec sélection du stickman, mise fictive et retour du résultat.
-- Fenêtre de sélection de trois secondes avec verrouillage automatique au départ.
+- Fenêtre de sélection de six secondes avec verrouillage automatique au départ, adaptée aux deux tickets locaux.
 - Repère coloré au-dessus du stickman choisi, chutes accélérées et léger choc visuel à l'impact.
 - Silhouettes incolores pendant les mises, puis révélation simultanée des couleurs au départ.
 - Pot partagé : mises fictives de 500 CR, 5 % de frais, puis partage proportionnel entre les mises placées sur le seul survivant.
