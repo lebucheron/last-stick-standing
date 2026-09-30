@@ -62,7 +62,7 @@
     for(const local of playerBets){const index=opponentBets.findIndex(b=>b.runner===local.runner);if(index>=0)opponentBets.splice(index,1);}
     root.dataset.lobbyCount=root.dataset.livePlayers||'1';updateMarket();
   }
-  window.addEventListener('laststick:market',event=>{networkCounts=event.detail?.counts||null;applyNetworkMarket();});
+  window.addEventListener('laststick:market',event=>{lobbyTimers.forEach(clearTimeout);lobbyTimers=[];networkCounts=event.detail?.counts||null;applyNetworkMarket();});
   function bets(includePreview=false){const all=opponentBets.concat(playerBets);if(includePreview)all.push({runner:selected,stake:STAKE,user:true,preview:true});return all;}
   function poolByRunner(includePreview=false){const totals=Object.fromEntries(RUNNERS.map(id=>[id,0]));for(const bet of bets(includePreview))totals[bet.runner]+=bet.stake;return totals;}
   function marketValid(all){return all.length>=2&&new Set(all.map(b=>b.runner)).size>=2;}
