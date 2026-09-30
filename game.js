@@ -2,7 +2,7 @@
   const root=document.getElementById('stick-tetris'),canvas=root.querySelector('canvas'),ctx=canvas.getContext('2d');
   const status=root.querySelector('#st-status'),button=root.querySelector('#st-pause'),legend=root.querySelector('#st-legend'),result=root.querySelector('#st-result');
   const W=420,H=460,S=40,LEFT=10,COLS=10,BASE=420,RADIUS=6,BODY=27,VISUAL_SCALE=1.08;
-  const RESULT_SHOW=5.5,PLAY_LIMIT=40,FINAL_DUEL_AT=37;
+  const RESULT_SHOW=5.5,PLAY_LIMIT=40,FINAL_DUEL_AT=43;
   const ARENA_W=COLS*S,ZONE_W=ARENA_W*.25;
   let stones=[],pieces=[],men=[],specks=[],stains=[],bursts=[],dust=[],time=0,next=3,camera=0,over=0,round=0,second=-1,palette,seed=1,turn=0,portals=[],teleports=0,impact=0,winnerId=-1,tieBreak=null,paceStart=28,paceSpan=70;
   let paused=window.openai?.widgetState?.privateContent?.paused??matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -103,8 +103,8 @@
     specks=specks.filter(p=>p.life>0);stains=stains.slice(-250);for(const b of bursts)b.life-=dt;bursts=bursts.filter(b=>b.life>0);
     for(const p of dust){p.life-=dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.vx*=Math.exp(-4*dt);p.vy-=7*dt;}dust=dust.filter(p=>p.life>0);
   }
-  function finish(ids,tie){const id=ids[Math.floor(random()*ids.length)];winnerId=id;status.textContent=String.fromCharCode(65+id)+' gagne · '+Math.max(0,Math.floor(time-6))+' s'+(tie?' · mort subite':'');result.textContent=status.textContent;over=RESULT_SHOW;}
-  function beginTieBreak(ids,duration=3.4,subtitle='LES DERNIERS SONT TOMBÉS ENSEMBLE'){const finalists=[...new Set(ids)];if(finalists.length!==2)return false;const winner=finalists[Math.floor(random()*finalists.length)];tieBreak={ids:finalists,winner,left:duration,total:duration,subtitle};status.textContent='Mort subite · '+finalists.map(id=>String.fromCharCode(65+id)).join(' vs ');result.textContent=status.textContent;return true;}
+  function finish(ids,tie){const id=ids[Math.floor(random()*ids.length)];winnerId=id;status.textContent=String.fromCharCode(65+id)+' gagne · '+Math.max(0,Math.floor(time-6))+' s'+(tie?' · combat final':'');result.textContent=status.textContent;over=RESULT_SHOW;}
+  function beginTieBreak(ids,duration=4.2,subtitle='LES DEUX DERNIERS RÈGLENT ÇA'){const finalists=[...new Set(ids)];if(finalists.length!==2)return false;const winner=finalists[Math.floor(random()*finalists.length)];tieBreak={ids:finalists,winner,left:duration,total:duration,subtitle};status.textContent='Combat final · '+finalists.map(id=>String.fromCharCode(65+id)).join(' vs ');result.textContent=status.textContent;return true;}
   function climbTarget(r,d){
     const x=r.x+d*20;const surfaces=stones.filter(c=>x+RADIUS>c.x&&x-RADIUS<c.x+S&&r.y-c.y>2&&r.y-c.y<=S+.5).sort((a,b)=>a.y-b.y);
     for(const c of surfaces){const tx=d>0?c.x+RADIUS+3:c.x+S-RADIUS-3;if(Math.abs(tx-r.x)>35||!clearBody(tx,c.y)||!peerClear(r,tx,c.y))continue;
@@ -118,11 +118,11 @@
     if(time<3){const joined=Number(root.dataset?.lobbyCount||0),marker=-100-joined;if(second!==marker){second=marker;status.textContent='Salle d’attente · '+joined+'/5 adversaires';}return;}
     if(time<6){const count=Math.max(1,Math.ceil(6-time));if(second!==-count){second=-count;status.textContent='Choisis ton stickman · départ dans '+count;}return;}
     const elapsed=time-6,aliveNow=men.filter(r=>r.alive),aliveCount=aliveNow.length;
-    if(elapsed>=FINAL_DUEL_AT&&aliveCount<=2){if(aliveCount===2)beginTieBreak(aliveNow.map(r=>r.id),PLAY_LIMIT-FINAL_DUEL_AT,'DUEL DES DEUX FINALISTES');else if(aliveCount===1)finish([aliveNow[0].id],false);return;}
+    if(elapsed>=FINAL_DUEL_AT&&aliveCount===2){beginTieBreak(aliveNow.map(r=>r.id),4.2,'DUEL DES DEUX FINALISTES');return;}
     if(Math.floor(time)!==second){second=Math.floor(time);status.textContent=(elapsed>=30?'TEMPÊTE · ':'Dernier debout · ')+Math.floor(elapsed)+' s · '+aliveCount+' en vie'+(aliveCount<=3?' · double chute':'');}
-    const pace=Math.min(1,Math.max(0,(time-paceStart)/paceSpan)),storm=Math.min(1,Math.max(0,(elapsed-28)/24));
+    const pace=Math.min(1,Math.max(0,(time-paceStart)/paceSpan)),storm=Math.min(1,Math.max(0,(elapsed-22)/18));
     const pressure=Math.min(1,pace*.35+storm*.75+(6-aliveCount)*.035);next-=dt;
-    if(next<=0&&pieces.length===0){let count=2;if(storm>.42&&random()<storm*.68)count++;spawnWave(count,storm);next=Math.max(.58,2.75-pressure*2+random()*.62);}
+    if(next<=0&&pieces.length===0){let count=2;if(elapsed>24||random()<storm*.7)count++;spawnWave(count,storm);next=Math.max(.42,2.55-pressure*2.05+random()*.48);}
     const frameDeaths=[];
     for(const p of [...pieces]){
       if(p.wait>0){p.wait-=dt;continue;}const old=p.y;p.vy+=(185+pressure*420)*dt;p.y=Math.min(p.target,p.y+p.vy*dt);
@@ -136,7 +136,7 @@
     const movers=men.slice(turn).concat(men.slice(0,turn));turn=(turn+1)%men.length;
     for(const r of movers){
       if(!r.alive)continue;const startX=r.x;r.land=Math.max(0,r.land-dt);r.choice-=dt;r.pushCooldown=Math.max(0,r.pushCooldown-dt);r.pushPose=Math.max(0,r.pushPose-dt);r.recoil=Math.max(0,r.recoil-dt);
-      if(r.climb){const c=r.climb;const nextT=c.t+dt,u=Math.min(1,nextT/.72),lift=Math.min(1,u/.68),e=lift*lift*(3-2*lift),x=c.sx+(c.tx-c.sx)*Math.max(0,(u-.68)/.32),y=c.sy+(c.ty-c.sy)*e;
+      if(r.climb){const c=r.climb;const nextT=c.t+dt,u=Math.min(1,nextT/.62),lift=Math.min(1,u/.72),e=1-Math.pow(1-lift,3),side=Math.max(0,(u-.42)/.58),slide=side*side*(3-2*side),x=c.sx+(c.tx-c.sx)*slide,y=c.sy+(c.ty-c.sy)*e;
         if(clearBody(x,y)&&peerClear(r,x,y)){c.t=nextT;r.x=x;r.y=y;r.blocked=0;}else{r.blocked+=dt;if(r.blocked>.5){r.climb=null;r.vy=0;r.ground=false;r.choice=0;}}
         if(u===1&&r.climb){r.climb=null;r.ground=true;r.land=.12;r.vy=0;r.vx=r.dir*25;}continue;
       }
@@ -200,11 +200,24 @@
     ctx.textAlign='center';ctx.fillStyle=color;ctx.font='800 24px Inter,system-ui,sans-serif';ctx.fillText(String.fromCharCode(65+winnerId)+' GAGNE',cx,392);ctx.fillStyle=palette.fg;ctx.font='600 10px Inter,system-ui,sans-serif';ctx.fillText('DERNIER STICKMAN DEBOUT',cx,410);ctx.textAlign='start';
   }
   function suddenDeath(){
-    if(!tieBreak)return;const {ids,winner,left,total,subtitle}=tieBreak,progress=1-left/total,eased=1-Math.pow(1-progress,3),winnerIndex=ids.indexOf(winner),turns=5*ids.length+winnerIndex,active=ids[Math.min(turns,Math.floor(eased*(turns+.999)))%ids.length];
-    ctx.fillStyle='rgba(4,6,4,.86)';ctx.fillRect(0,0,W,H);ctx.textAlign='center';ctx.fillStyle=palette.blood;ctx.font='800 23px Inter,system-ui,sans-serif';ctx.fillText('MORT SUBITE',W/2,80);ctx.fillStyle=palette.fg;ctx.font='600 10px Inter,system-ui,sans-serif';ctx.fillText(subtitle,W/2,101);
-    const gap=Math.min(105,280/Math.max(1,ids.length-1)),start=W/2-gap*(ids.length-1)/2;
-    ids.forEach((id,index)=>{const x=start+index*gap,y=290,color=palette.series[id],on=id===active;ctx.globalAlpha=on?1:.42;ctx.strokeStyle=color;ctx.fillStyle=color;ctx.lineWidth=on?4:3;ctx.lineCap='round';ctx.beginPath();ctx.arc(x,y-48,6,0,Math.PI*2);ctx.fill();line([[x,y-41],[x,y-19]]);line([[x,y-34],[x-15,y-26],[x-22,y-34]]);line([[x,y-34],[x+15,y-26],[x+22,y-34]]);line([[x,y-19],[x-11,y-7],[x-15,y+4]]);line([[x,y-19],[x+11,y-7],[x+15,y+4]]);if(on){ctx.globalAlpha=.18;ctx.beginPath();ctx.arc(x,y-28,35,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;ctx.fillStyle=color;ctx.beginPath();ctx.arc(x,155,7,0,Math.PI*2);ctx.fill();ctx.strokeStyle=color;ctx.globalAlpha=.35;ctx.beginPath();ctx.moveTo(x,165);ctx.lineTo(x,y-65);ctx.stroke();}ctx.globalAlpha=1;ctx.fillStyle=color;ctx.font='800 18px Inter,system-ui,sans-serif';ctx.fillText(String.fromCharCode(65+id),x,y+33);});
-    ctx.fillStyle=palette.fg;ctx.font='700 12px Inter,system-ui,sans-serif';ctx.fillText(left>.45?'LE SIGNAL TOURNE…':'VERDICT',W/2,380);ctx.textAlign='start';
+    if(!tieBreak)return;
+    const {ids,winner,left,total,subtitle}=tieBreak,p=1-left/total,loser=ids.find(id=>id!==winner),winnerLeft=ids[0]===winner;
+    const ease=value=>value*value*(3-2*value),approach=ease(Math.min(1,p/.27)),exchange=Math.max(0,Math.min(1,(p-.27)/.43)),fatal=Math.max(0,Math.min(1,(p-.70)/.18)),fall=Math.max(0,Math.min(1,(p-.84)/.16));
+    const leftId=ids[0],rightId=ids[1],leftX=92+approach*83,rightX=W-92-approach*83,y=302;
+    ctx.fillStyle='rgba(4,6,4,.88)';ctx.fillRect(0,0,W,H);ctx.textAlign='center';ctx.fillStyle=palette.blood;ctx.font='800 23px Inter,system-ui,sans-serif';ctx.fillText('COMBAT FINAL',W/2,72);ctx.fillStyle=palette.fg;ctx.font='600 10px Inter,system-ui,sans-serif';ctx.fillText(subtitle,W/2,94);
+    ctx.strokeStyle=palette.edge;ctx.globalAlpha=.5;ctx.lineWidth=2;line([[58,y+8],[W-58,y+8]]);ctx.globalAlpha=1;
+    function fighter(id,x,dir,isWinner){
+      const fatalStrike=isWinner?fatal:0,hit=!isWinner?fall:0,jab=exchange?Math.sin(exchange*Math.PI*8)*9:0;
+      ctx.save();ctx.translate(x+(isWinner?dir*fatalStrike*18:-dir*hit*18),y-hit*2);ctx.rotate(!isWinner?dir*hit*1.28:0);ctx.strokeStyle=palette.series[id];ctx.fillStyle=palette.series[id];ctx.lineWidth=4;ctx.lineCap='round';ctx.lineJoin='round';
+      ctx.beginPath();ctx.arc(0,-48,6,0,Math.PI*2);ctx.fill();line([[0,-41],[0,-19]]);
+      const punch=fatalStrike?dir*(18+fatalStrike*24):dir*(13+jab);
+      line([[0,-35],[punch,-31-fatalStrike*15],[punch+dir*8,-31-fatalStrike*17]]);line([[0,-34],[-dir*11,-27],[-dir*16,-35]]);
+      line([[0,-19],[-9,-7],[-14,4]]);line([[0,-19],[10,-8],[15,3]]);ctx.restore();
+      ctx.fillStyle=palette.series[id];ctx.font='800 18px Inter,system-ui,sans-serif';ctx.fillText(String.fromCharCode(65+id),x,y+42);
+    }
+    fighter(leftId,leftX,1,leftId===winner);fighter(rightId,rightX,-1,rightId===winner);
+    if(fatal>.25){const victimX=winnerLeft?rightX:leftX,dir=winnerLeft?1:-1;ctx.fillStyle=palette.blood;for(let i=0;i<12;i++){const spread=(i-5.5)*.42;ctx.globalAlpha=Math.max(0,1-fall)*.85;ctx.beginPath();ctx.arc(victimX-dir*(16+fatal*36),y-45+spread*9,1.4+(i%3),0,Math.PI*2);ctx.fill();}ctx.globalAlpha=1;}
+    ctx.fillStyle=palette.fg;ctx.font='700 12px Inter,system-ui,sans-serif';ctx.fillText(p<.27?'FACE À FACE':p<.70?'COUPS ÉCHANGÉS':p<.88?'COUP FATAL':'K.O.',W/2,386);ctx.textAlign='start';
   }
   function draw(){
     colors();ctx.clearRect(0,0,W,H);ctx.fillStyle=palette.bg;ctx.fillRect(0,0,W,H);const glow=ctx.createRadialGradient(W/2,H*.45,20,W/2,H*.45,W*.7);glow.addColorStop(0,'rgba(83,112,67,.10)');glow.addColorStop(1,'rgba(0,0,0,0)');ctx.fillStyle=glow;ctx.fillRect(0,0,W,H);ctx.fillStyle=palette.edge;ctx.globalAlpha=.12;for(let x=-20,i=0;x<W+35;x+=48,i++){const h=75+(i%3)*21;ctx.beginPath();ctx.moveTo(x,H);ctx.lineTo(x+20,H-h);ctx.lineTo(x+40,H);ctx.fill();ctx.fillRect(x+18,H-h,4,h);}ctx.globalAlpha=1;ctx.save();const shake=impact>0?Math.sin(impact*150)*impact*22:0;ctx.translate(shake,camera);ctx.strokeStyle=palette.edge;ctx.lineWidth=1;line([[LEFT,BASE+1],[W-LEFT,BASE+1]]);
@@ -219,7 +232,7 @@
     for(const r of men){if(!r.alive)continue;const selected=!concealed&&root.dataset?.selectedRunner?.charCodeAt(0)-65===r.id;if(selected){ctx.fillStyle=palette.series[r.id];ctx.globalAlpha=.95;ctx.beginPath();ctx.arc(r.x,r.y-39,3,0,Math.PI*2);ctx.fill();ctx.globalAlpha=.22;ctx.beginPath();ctx.arc(r.x,r.y-39,7,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;}ctx.save();ctx.translate(r.x,r.y);ctx.scale(-r.dir*VISUAL_SCALE,VISUAL_SCALE);if(r.recoil>0)ctx.rotate(-Math.sign(r.shove||r.dir)*r.dir*.18);ctx.lineWidth=2.6;ctx.lineCap='round';ctx.lineJoin='round';ctx.strokeStyle=concealed?palette.stone:palette.series[r.id];ctx.fillStyle=concealed?palette.stone:palette.series[r.id];
       const walk=Math.sin(r.phase)*6*r.moving;ctx.beginPath();ctx.arc(-2,-23,3.7,0,Math.PI*2);ctx.fill();line([[-2,-19],[0,-11]]);
       if(r.pushPose>0){line([[-2,-18],[-10,-17],[-17,-17]]);line([[-1,-17],[-9,-14],[-17,-15]]);line([[0,-11],[-7,-5],[-10,0]]);line([[0,-11],[7,-5],[10,0]]);}
-      else if(r.climb){const c=r.climb,hx=(c.tx-r.x)*(-r.dir),hy=c.ty-r.y;line([[-2,-18],[-8,-24],[hx,hy-1]]);line([[-1,-17],[3,-25],[hx+3,hy-1]]);line([[0,-11],[-8,-14],[-10,-3]]);line([[0,-11],[6,-5],[4,0]]);}
+      else if(r.climb){const reach=Math.min(1,r.climb.t/.3),grip=-25-reach*5;line([[-2,-18],[-8,-22],[-12,grip]]);line([[-1,-17],[5,-22],[10,grip+1]]);line([[0,-11],[-7,-8],[-10,-1]]);line([[0,-11],[7,-7],[9,0]]);}
       else if(!r.ground){line([[-2,-18],[-9,-22],[-12,-28]]);line([[-1,-18],[7,-22],[10,-27]]);line([[0,-11],[-6,-5],[-9,0]]);line([[0,-11],[5,-5],[8,0]]);}
       else{ctx.translate(0,r.land?2:0);line([[-2,-18],[-walk,-14],[-walk-3,-18]]);line([[-2,-18],[walk,-14],[walk+2,-18]]);line([[0,-11],[-walk,-5],[-walk-2,0]]);line([[0,-11],[walk,-5],[walk+2,0]]);}ctx.restore();
     }

@@ -1,0 +1,8 @@
+name = "last-stick-live"
+main = "worker.js"
+compatibility_date = "2026-09-30"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "last-stick-live"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"

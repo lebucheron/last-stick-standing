@@ -44,3 +44,7 @@ La configuration de jeu a été testée sur 6 000 manches : environ 35 secondes 
 5. Effectuer les contrôles Forest avant tout lancement avec un vrai token.
 
 La version publiée d'un jeu Harness ne pouvant pas être remplacée, le lancement doit attendre que les règles et l'interface soient stabilisées.
+
+## Activité en direct
+
+Le site contient désormais un client de télémétrie anonyme, un tableau de bord privé dans `admin.html` et une API Cloudflare Worker avec stockage D1 dans `backend/`. Le suivi reste inactif tant que l’adresse du Worker n’est pas renseignée dans `telemetry-config.js`. Les instructions de déploiement sont dans `backend/README.md`.

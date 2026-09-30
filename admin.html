@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Activité · Last Stick Standing</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="admin.css">
+</head>
+<body class="admin-page">
+  <main class="admin-shell">
+    <header class="admin-header">
+      <div><p class="eyebrow">LAST STICK STANDING</p><h1>Activité en direct</h1></div>
+      <span id="connection" class="connection">NON CONNECTÉ</span>
+    </header>
+    <form id="admin-login" class="admin-login">
+      <label>Adresse de l’API <input id="api-url" type="url" placeholder="https://…workers.dev" required></label>
+      <label>Clé privée <input id="admin-key" type="password" autocomplete="current-password" required></label>
+      <button type="submit" class="bet-button">Voir l’activité</button>
+      <small>La clé reste dans cet onglet et n’est jamais enregistrée sur le site.</small>
+    </form>
+    <section id="dashboard" hidden>
+      <div class="live-cards">
+        <article><span>En ligne</span><strong id="active-now">0</strong><small>actifs depuis 45 s</small></article>
+        <article><span>Visiteurs aujourd’hui</span><strong id="visitors-today">0</strong></article>
+        <article><span>Manches aujourd’hui</span><strong id="rounds-today">0</strong></article>
+        <article><span>Durée moyenne</span><strong id="average-duration">—</strong></article>
+      </div>
+      <div class="admin-grid">
+        <article class="admin-panel"><h2>Victoires par couleur</h2><div id="winners" class="winner-bars"></div></article>
+        <article class="admin-panel"><h2>Dernières manches</h2><div id="recent-rounds" class="recent-rounds"></div></article>
+      </div>
+      <p id="last-refresh" class="refresh-note"></p>
+    </section>
+  </main>
+  <script src="telemetry-config.js"></script>
+  <script src="admin.js"></script>
+</body>
+</html>

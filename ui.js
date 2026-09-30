@@ -23,8 +23,12 @@
       return clean;
     }catch{return blankEconomy();}
   }
-  let economy=loadEconomy(),selected='A',locked=false,finished=false,betPlaced=false,settled=false,balance=economy.balance,jackpot=economy.jackpot,opponentBets=[],lobbyTimers=[];
+  let economy=loadEconomy(),selected='A',locked=false,finished=false,betPlaced=false,settled=false,balance=economy.balance,jackpot=economy.jackpot,opponentBets=[],lobbyTimers=[],raceStartedAt=0,roundId='';
   root.dataset.selectedRunner=selected;
+
+  function report(type,data={}){
+    window.dispatchEvent(new CustomEvent('laststick:event',{detail:{type,...data}}));
+  }
 
   const credits=value=>Math.floor(value).toLocaleString('fr-FR')+' CR';
   function saveEconomy(){
@@ -59,8 +63,8 @@
     playersEl.textContent=all.length;poolEl.textContent=credits(pot);jackpotEl.textContent=credits(jackpot);
     marketEl.textContent=valid?'POT ACTIF':'EN ATTENTE';marketEl.classList.toggle('pending',!valid);
     cards.forEach(card=>{let amount=card.querySelector('em');if(!amount){amount=document.createElement('em');card.append(amount);}amount.textContent=credits(totals[card.dataset.runner]);});
-    const winningStake=previewTotals[selected],distributable=Math.floor(previewPot*(1-FEE))+jackpot;
-    potentialEl.textContent=marketValid(preview)&&winningStake?credits(distributable*STAKE/winningStake):'En attente';
+    const winningStake=previewTotals[selected],basePool=Math.floor(previewPot*(1-FEE));
+    potentialEl.textContent=marketValid(preview)&&winningStake?credits(basePool*STAKE/winningStake+jackpot):'En attente';
   }
 
   function select(id){
@@ -78,7 +82,7 @@
     if(locked)return;
     if(manual&&balance<STAKE){state.textContent='Solde insuffisant';return;}
     locked=true;
-    if(manual){betPlaced=true;balance-=STAKE;economy.pending=STAKE;saveEconomy();showBalance();}
+    if(manual){betPlaced=true;balance-=STAKE;economy.pending=STAKE;saveEconomy();showBalance();report('bet_placed',{choice:selected,stake:STAKE});}
     cards.forEach(card=>card.disabled=true);
     button.disabled=true;
     button.textContent=manual?'Mise enregistrée · '+selected:'Mises fermées';
@@ -109,20 +113,22 @@
     const text=status.textContent;
     if(text.startsWith('Salle d’attente')){if(finished){reopenChoice();finished=false;}return;}
     if(text.startsWith('Choisis ton stickman')){if(finished){reopenChoice();finished=false;}return;}
-    if(text.startsWith('Dernier debout'))lockChoice(false);
+    if(text.startsWith('Dernier debout')){
+      lockChoice(false);
+      if(!raceStartedAt){raceStartedAt=Date.now();roundId=crypto.randomUUID?.()||String(raceStartedAt);report('race_started',{round_id:roundId,choice:betPlaced?selected:null,bet_placed:betPlaced});}
+    }
     const winner=text.match(/^([A-F]) gagne/);
     if(!winner)return;
     finished=true;
     if(settled)return;
-    const all=bets(false),pot=all.reduce((sum,b)=>sum+b.stake,0),valid=marketValid(all),totals=poolByRunner(false),distributable=Math.floor(pot*(1-FEE))+jackpot;
+    const all=bets(false),pot=all.reduce((sum,b)=>sum+b.stake,0),valid=marketValid(all),totals=poolByRunner(false),basePool=Math.floor(pot*(1-FEE)),distributable=basePool+jackpot;
     let payout=0;
     if(!valid){if(betPlaced){balance+=STAKE;economy.pending=0;saveEconomy();showBalance();payout=STAKE;}state.textContent='Manche annulée · mise rendue';}
     else if(!totals[winner[1]]){jackpot=distributable;state.textContent='Aucun pari gagnant · jackpot '+credits(jackpot);}
     else{
-      if(betPlaced&&winner[1]===selected){payout=Math.floor(distributable*STAKE/totals[winner[1]]);balance+=payout;state.textContent='Gagné · +'+credits(payout);}
-      else if(betPlaced)state.textContent='Perdu · victoire du '+winner[1];
+      if(betPlaced&&winner[1]===selected){payout=Math.floor(basePool*STAKE/totals[winner[1]])+jackpot;balance+=payout;jackpot=0;state.textContent='Gagné · +'+credits(payout);}
+      else if(betPlaced)state.textContent='Perdu · victoire du '+winner[1]+(jackpot?' · jackpot conservé':'');
       else state.textContent='Victoire du stickman '+winner[1];
-      jackpot=0;
     }
     if(valid&&betPlaced){
       const profit=payout-STAKE;economy.rounds++;economy.wagered+=STAKE;economy.paid+=payout;economy.pending=0;
@@ -133,6 +139,8 @@
     showSettlement(winner[1],pot,payout);
     updateMarket();potentialEl.textContent='Manche terminée';marketEl.textContent='RÈGLEMENT';marketEl.classList.remove('pending');
     settled=true;root.dataset.completedRounds=String(Number(root.dataset.completedRounds||0)+1);
+    report('race_finished',{round_id:roundId,winner:winner[1],choice:betPlaced?selected:null,bet_placed:betPlaced,won:betPlaced&&winner[1]===selected,duration_ms:raceStartedAt?Date.now()-raceStartedAt:null,sudden_death:text.includes('combat final')});
+    raceStartedAt=0;roundId='';
   }).observe(status,{childList:true,characterData:true,subtree:true});
 
   saveEconomy();showEconomy();
