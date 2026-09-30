@@ -13,7 +13,7 @@
       let data;try{data=JSON.parse(event.data);}catch{return;}
       if(data.type==='round'){root.dataset.roundId=data.roundId;if(roundLabel)roundLabel.textContent='MANCHE '+data.roundId.slice(0,6).toUpperCase();dispatch('laststick:round',data);}
       if(data.type==='waiting')dispatch('laststick:waiting',data);
-      if(data.type==='market'){root.dataset.livePlayers=String(data.humans||0);root.dataset.liveMarket=JSON.stringify(data.counts||{});dispatch('laststick:market',data);}
+      if(data.type==='market'){root.dataset.livePlayers=String(data.humans||0);root.dataset.liveMarket=JSON.stringify(data.counts||{});if(live)live.lastChild.textContent=' MULTI · '+(data.humans||0)+' EN LIGNE';dispatch('laststick:market',data);}
     });
     socket.addEventListener('close',()=>{if(live)live.lastChild.textContent=' RECONNEXION';retry=setTimeout(connect,2200);});
   }
