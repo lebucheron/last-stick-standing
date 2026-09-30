@@ -90,11 +90,20 @@ function botPicks(seed){
 export class MatchRoom{
   constructor(state,env){this.state=state;this.env=env;}
   sockets(){return this.state.getWebSockets();}
+  async wallet(player,initial={}){
+    let wallet=await this.state.storage.get('wallet:'+player);if(wallet)return wallet;
+    const safe=(value,fallback,max=1000000)=>Number.isFinite(Number(value))?Math.max(0,Math.min(max,Math.floor(Number(value)))):fallback;
+    wallet={balance:safe(initial.balance,12500,50000),rounds:safe(initial.rounds,0),wins:safe(initial.wins,0),losses:safe(initial.losses,0),wagered:safe(initial.wagered,0),paid:safe(initial.paid,0),last:null};
+    await this.state.storage.put('wallet:'+player,wallet);return wallet;
+  }
+  async jackpot(initial=0){let value=await this.state.storage.get('jackpot');if(value===undefined){value=Math.max(0,Math.min(15000,Math.floor(Number(initial)||0)));await this.state.storage.put('jackpot',value);}return value;}
+  async sendWallet(socket,player,wallet=null){const value=wallet||await this.wallet(player),jackpot=await this.jackpot();this.send(socket,{type:'wallet',wallet:value,jackpot});}
+  sendPlayer(player,message){for(const socket of this.sockets())if(socket.deserializeAttachment()?.player===player)this.send(socket,message);}
   async createRound(){
     const seed=nextSeed(),round={id:crypto.randomUUID(),seed,raceAt:Date.now()+9000,bots:botPicks(seed),bets:{},closing:false};
     await this.state.storage.put('round',round);await this.state.storage.setAlarm(round.raceAt+55000);return round;
   }
-  async current(){let round=await this.state.storage.get('round');if(!round||Date.now()>round.raceAt+60000)round=await this.createRound();return round;}
+  async current(){let round=await this.state.storage.get('round');if(round&&Date.now()>round.raceAt+60000&&!round.closing)await this.refund(round);if(!round||Date.now()>round.raceAt+60000)round=await this.createRound();return round;}
   market(round){
     const counts=Object.fromEntries(['A','B','C','D','E','F'].map(id=>[id,0]));
     for(const id of round.bots||[])if(counts[id]!==undefined)counts[id]++;
@@ -103,27 +112,54 @@ export class MatchRoom{
   }
   send(socket,message){try{socket.send(JSON.stringify(message));}catch{}}
   broadcast(message){for(const socket of this.sockets())this.send(socket,message);}
+  async refund(round){
+    for(const [player,picks] of Object.entries(round.bets||{})){const amount=picks.length*500,wallet=await this.wallet(player);wallet.balance+=amount;wallet.wagered=Math.max(0,wallet.wagered-amount);await this.state.storage.put('wallet:'+player,wallet);this.sendPlayer(player,{type:'wallet',wallet,jackpot:await this.jackpot()});}
+  }
+  async settle(round,winner){
+    const market=this.market(round),pot=Object.values(market.counts).reduce((sum,count)=>sum+count*500,0),basePool=Math.floor(pot*.88),winningPool=(market.counts[winner]||0)*500;
+    let jackpot=await this.jackpot(),realWinningStake=0;for(const picks of Object.values(round.bets||{}))realWinningStake+=picks.filter(id=>id===winner).length*500;
+    if(!winningPool)jackpot=Math.min(15000,jackpot+Math.floor(basePool*.15));
+    const settlements={};
+    for(const [player,picks] of Object.entries(round.bets||{})){
+      const wallet=await this.wallet(player),stake=picks.length*500,winningStake=picks.filter(id=>id===winner).length*500;
+      let payout=winningPool?Math.floor(basePool*winningStake/winningPool):0;if(winningStake&&realWinningStake)payout+=Math.floor(jackpot*winningStake/realWinningStake);
+      wallet.balance+=payout;wallet.rounds++;wallet.paid+=payout;if(payout>stake)wallet.wins++;else wallet.losses++;wallet.last={winner,choice:picks.join('+'),payout,profit:payout-stake,at:Date.now()};
+      await this.state.storage.put('wallet:'+player,wallet);settlements[player]={winner,pot,stake,payout,profit:payout-stake,wallet};
+    }
+    if(realWinningStake)jackpot=0;await this.state.storage.put('jackpot',jackpot);round.settlements=settlements;return {pot,jackpot,settlements};
+  }
+  async sendSettlement(socket,round){
+    const player=socket.deserializeAttachment()?.player;if(!player)return;const wallet=await this.wallet(player),entry=round.settlements?.[player]||{winner:round.result?.winner,pot:this.market(round).counts?Object.values(this.market(round).counts).reduce((sum,count)=>sum+count*500,0):0,stake:0,payout:0,profit:0};
+    this.send(socket,{type:'settlement',...entry,wallet,jackpot:await this.jackpot()});
+  }
   async fetch(request){
     if(request.headers.get('Upgrade')!=='websocket')return new Response('WebSocket required',{status:426});
-    const session=new URL(request.url).searchParams.get('session');if(!validId(session))return new Response('Invalid session',{status:400});
-    const pair=new WebSocketPair(),client=pair[0],server=pair[1];this.state.acceptWebSocket(server);server.serializeAttachment({session});
+    const url=new URL(request.url),session=url.searchParams.get('session'),player=url.searchParams.get('player');if(!validId(session)||!validId(player))return new Response('Invalid identity',{status:400});
+    const initial={balance:url.searchParams.get('balance'),rounds:url.searchParams.get('rounds'),wins:url.searchParams.get('wins'),losses:url.searchParams.get('losses'),wagered:url.searchParams.get('wagered'),paid:url.searchParams.get('paid')};
+    const wallet=await this.wallet(player,initial);await this.jackpot(url.searchParams.get('jackpot'));
+    const pair=new WebSocketPair(),client=pair[0],server=pair[1];this.state.acceptWebSocket(server);server.serializeAttachment({session,player});
     const round=await this.current();
+    await this.sendWallet(server,player,wallet);
+    if(round.bets?.[player]?.length)this.send(server,{type:'bet_ack',choices:round.bets[player],wallet,jackpot:await this.jackpot()});
     this.send(server,{type:'round',roundId:round.id,seed:round.seed,raceAt:round.raceAt,catchingUp:Date.now()>=round.raceAt});
-    if(round.closing&&round.result)this.send(server,{type:'result',roundId:round.id,...round.result});
+    if(round.closing&&round.result){this.send(server,{type:'result',roundId:round.id,...round.result});await this.sendSettlement(server,round);}
     this.broadcast(this.market(round));return new Response(null,{status:101,webSocket:client});
   }
   async webSocketMessage(socket,message){
-    let data;try{data=JSON.parse(String(message));}catch{return;}const round=await this.current(),session=socket.deserializeAttachment()?.session;
-    if(data.type==='bet'&&data.roundId===round.id&&Date.now()<round.raceAt&&/^[A-F]$/.test(data.choice)&&[1,2].includes(data.ticket)&&session){
-      const picks=Array.isArray(round.bets[session])?round.bets[session].slice(0,2):[];picks[data.ticket-1]=data.choice;round.bets[session]=picks.filter(Boolean);await this.state.storage.put('round',round);this.broadcast(this.market(round));
+    let data;try{data=JSON.parse(String(message));}catch{return;}const round=await this.current(),player=socket.deserializeAttachment()?.player;
+    if(data.type==='bet'&&data.roundId===round.id&&Date.now()<round.raceAt&&/^[A-F]$/.test(data.choice)&&[1,2].includes(data.ticket)&&player){
+      const picks=Array.isArray(round.bets[player])?round.bets[player].slice(0,2):[],wallet=await this.wallet(player);
+      if(picks[data.ticket-1]){this.send(socket,{type:'bet_error',message:'Ticket déjà utilisé'});return;}if(wallet.balance<500){this.send(socket,{type:'bet_error',message:'Solde insuffisant'});return;}
+      picks[data.ticket-1]=data.choice;round.bets[player]=picks.filter(Boolean);wallet.balance-=500;wallet.wagered+=500;await this.state.storage.put('round',round);await this.state.storage.put('wallet:'+player,wallet);
+      this.sendPlayer(player,{type:'bet_ack',choices:round.bets[player],wallet,jackpot:await this.jackpot()});this.broadcast(this.market(round));
     }
     if(data.type==='finished'&&data.roundId===round.id&&!round.closing&&Date.now()>=round.raceAt+5000){
-      round.closing=true;round.result={winner:/^[A-F]$/.test(data.winner)?data.winner:null,durationMs:Math.max(5000,Math.min(120000,Date.now()-round.raceAt))};await this.state.storage.put('round',round);await this.state.storage.setAlarm(Date.now()+8000);this.broadcast({type:'result',roundId:round.id,...round.result});
+      round.closing=true;round.result={winner:/^[A-F]$/.test(data.winner)?data.winner:null,durationMs:Math.max(5000,Math.min(120000,Date.now()-round.raceAt))};await this.settle(round,round.result.winner);await this.state.storage.put('round',round);await this.state.storage.setAlarm(Date.now()+8000);this.broadcast({type:'result',roundId:round.id,...round.result});for(const peer of this.sockets())await this.sendSettlement(peer,round);
     }
   }
   async webSocketClose(){const round=await this.current();this.broadcast(this.market(round));}
   async webSocketError(){const round=await this.current();this.broadcast(this.market(round));}
-  async alarm(){const round=await this.createRound();this.broadcast({type:'round',roundId:round.id,seed:round.seed,raceAt:round.raceAt});this.broadcast(this.market(round));}
+  async alarm(){const previous=await this.state.storage.get('round');if(previous&&!previous.closing)await this.refund(previous);const round=await this.createRound();this.broadcast({type:'round',roundId:round.id,seed:round.seed,raceAt:round.raceAt});this.broadcast(this.market(round));}
 }
 
 export default {
@@ -135,7 +171,7 @@ export default {
       if(request.method==='GET'&&url.pathname==='/api/stats')return await stats(request,env);
       if(request.method==='GET'&&url.pathname==='/api/live'){
         if(request.headers.get('origin')!=='https://lebucheron.github.io')return json({error:'origin_forbidden'},403);
-        const id=env.MATCH_ROOM.idFromName('public-arena-v1');return env.MATCH_ROOM.get(id).fetch(request);
+        const id=env.MATCH_ROOM.idFromName('public-arena-v2');return env.MATCH_ROOM.get(id).fetch(request);
       }
       if(request.method==='GET'&&url.pathname==='/health')return json({ok:true});
       return json({error:'not_found'},404);

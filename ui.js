@@ -24,7 +24,7 @@
       return clean;
     }catch{return blankEconomy();}
   }
-  let economy=loadEconomy(),selected='A',locked=false,finished=false,betPlaced=false,settled=false,balance=economy.balance,jackpot=economy.jackpot,playerBets=[],opponentBets=[],lobbyTimers=[],raceStartedAt=0,roundId='',networkCounts=null;
+  let economy=loadEconomy(),selected='A',locked=false,finished=false,betPlaced=false,settled=false,balance=economy.balance,jackpot=economy.jackpot,playerBets=[],opponentBets=[],lobbyTimers=[],raceStartedAt=0,roundId='',networkCounts=null,serverWallet=false,betPending=false;
   root.dataset.selectedRunner=selected;
 
   function report(type,data={}){
@@ -43,7 +43,7 @@
     economyWageredEl.textContent=credits(economy.wagered);
     const last=economy.history[0];economyLastEl.textContent=last?(last.profit>0?'+':'')+credits(last.profit)+' · '+last.choice:'Aucune';
     economyLastEl.classList.toggle('positive',!!last&&last.profit>0);economyLastEl.classList.toggle('negative',!!last&&last.profit<0);
-    economyNoteEl.textContent='Crédits fictifs enregistrés sur cet appareil · '+economy.rounds+' manche'+(economy.rounds>1?'s':'')+' réglée'+(economy.rounds>1?'s':'')+' · retour théorique ≈ 81–85 %';
+    economyNoteEl.textContent=(serverWallet?'Crédits fictifs synchronisés par le serveur':'Crédits fictifs enregistrés sur cet appareil')+' · '+economy.rounds+' manche'+(economy.rounds>1?'s':'')+' réglée'+(economy.rounds>1?'s':'')+' · retour théorique ≈ 81–85 %';
   }
   function showBalance(){showEconomy();}
   function randomRunner(){const data=new Uint32Array(1);crypto.getRandomValues(data);return RUNNERS[data[0]%RUNNERS.length];}
@@ -63,6 +63,17 @@
     root.dataset.lobbyCount=root.dataset.livePlayers||'1';updateMarket();
   }
   window.addEventListener('laststick:market',event=>{lobbyTimers.forEach(clearTimeout);lobbyTimers=[];networkCounts=event.detail?.counts||null;applyNetworkMarket();});
+  function applyServerWallet(data){
+    if(!data?.wallet)return;serverWallet=true;root.dataset.walletMode='server';const wallet=data.wallet;balance=Math.max(0,Number(wallet.balance)||0);jackpot=Math.max(0,Number(data.jackpot)||0);
+    for(const key of ['rounds','wins','losses','wagered','paid'])economy[key]=Math.max(0,Number(wallet[key])||0);economy.balance=balance;economy.jackpot=jackpot;economy.pending=0;if(wallet.last)economy.history=[wallet.last];saveEconomy();showEconomy();updateMarket();if(!locked){button.disabled=balance<STAKE;state.textContent=balance>=STAKE?'Portefeuille serveur connecté':'Portefeuille épuisé';}
+  }
+  window.addEventListener('laststick:wallet',event=>applyServerWallet(event.detail));
+  window.addEventListener('laststick:bet-ack',event=>{
+    const requested=betPending;betPending=false;applyServerWallet(event.detail);playerBets=(event.detail?.choices||[]).map(runner=>({runner,stake:STAKE,user:true}));betPlaced=playerBets.length>0;renderTickets();applyNetworkMarket();
+    if(requested){const latest=playerBets.at(-1);if(latest)report('bet_placed',{choice:latest.runner,stake:STAKE,ticket:playerBets.length});}
+    if(!locked){button.disabled=playerBets.length>=MAX_LOCAL_BETS||balance<STAKE;button.textContent=playerBets.length<MAX_LOCAL_BETS?'Ajouter le ticket '+selected:playerBets.length+' tickets enregistrés';state.textContent='Ticket serveur confirmé · '+playerBets.length+'/2';}
+  });
+  window.addEventListener('laststick:bet-error',event=>{betPending=false;state.textContent=event.detail?.message||'Mise refusée';button.disabled=locked||balance<STAKE;});
   function bets(includePreview=false){const all=opponentBets.concat(playerBets);if(includePreview)all.push({runner:selected,stake:STAKE,user:true,preview:true});return all;}
   function poolByRunner(includePreview=false){const totals=Object.fromEntries(RUNNERS.map(id=>[id,0]));for(const bet of bets(includePreview))totals[bet.runner]+=bet.stake;return totals;}
   function marketValid(all){return all.length>=2&&new Set(all.map(b=>b.runner)).size>=2;}
@@ -95,6 +106,7 @@
     if(manual){
       if(locked||playerBets.length>=MAX_LOCAL_BETS)return;
       if(balance<STAKE){state.textContent='Solde insuffisant';return;}
+      if(serverWallet){if(betPending)return;betPending=true;button.disabled=true;state.textContent='Validation du ticket…';window.dispatchEvent(new CustomEvent('laststick:bet-request',{detail:{choice:selected,ticket:playerBets.length+1}}));return;}
       playerBets.push({runner:selected,stake:STAKE,user:true});betPlaced=true;balance-=STAKE;economy.pending+=STAKE;saveEconomy();showBalance();report('bet_placed',{choice:selected,stake:STAKE,ticket:playerBets.length});renderTickets();
       if(playerBets.length<MAX_LOCAL_BETS&&balance>=STAKE){state.textContent='Ticket '+playerBets.length+' enregistré · encore une place';button.textContent='Ajouter le ticket '+selected;updateMarket();return;}
     }
@@ -123,6 +135,10 @@
     finalPool.textContent=credits(pot);finalStake.textContent=credits(localStake);finalPayout.textContent=credits(payout);
     finalProfit.textContent=(profit>0?'+':'')+credits(profit);finalProfit.classList.toggle('positive',profit>0);finalProfit.classList.toggle('negative',profit<0);
   }
+  window.addEventListener('laststick:settlement',event=>{
+    const data=event.detail||{};applyServerWallet(data);showSettlement(data.winner,data.pot||0,data.payout||0);const stake=Number(data.stake)||0,payout=Number(data.payout)||0;
+    state.textContent=!stake?'Manche observée · aucun ticket':payout>stake?'Ticket gagnant · +'+credits(payout):payout?'Versement · +'+credits(payout):'Ticket perdant';potentialEl.textContent='Règlement serveur';marketEl.textContent='RÉGLÉ';marketEl.classList.remove('pending');
+  });
 
   button.addEventListener('click',()=>lockChoice(true));
 
@@ -139,6 +155,11 @@
     finished=true;
     if(settled)return;
     const all=bets(false),pot=all.reduce((sum,b)=>sum+b.stake,0),valid=marketValid(all),totals=poolByRunner(false),basePool=Math.floor(pot*(1-FEE)),localStake=playerBets.length*STAKE,userWinningStake=playerBets.filter(b=>b.runner===winner[1]).reduce((sum,b)=>sum+b.stake,0);
+    if(serverWallet){
+      state.textContent='Résultat reçu · règlement serveur…';updateMarket();potentialEl.textContent='Calcul du versement';marketEl.textContent='RÈGLEMENT';marketEl.classList.remove('pending');settled=true;root.dataset.completedRounds=String(Number(root.dataset.completedRounds||0)+1);
+      let starts={},deaths=[];try{starts=JSON.parse(root.dataset.roundStarts||'{}');}catch{}try{deaths=JSON.parse(root.dataset.roundDeaths||'[]');}catch{}
+      report('race_finished',{round_id:roundId,seed:Number(root.dataset.roundSeed)||null,winner:winner[1],winner_start:starts[winner[1]],deaths,choice:playerBets[0]?.runner||null,choices:playerBets.map(b=>b.runner),bet_placed:betPlaced,won:userWinningStake>0,duration_ms:raceStartedAt?Date.now()-raceStartedAt:null,sudden_death:text.includes('combat final')});raceStartedAt=0;roundId='';return;
+    }
     let payout=0;
     if(!valid){if(betPlaced){balance+=localStake;economy.pending=0;saveEconomy();showBalance();payout=localStake;}state.textContent='Manche annulée · mises rendues';}
     else if(!totals[winner[1]]){const added=Math.max(0,Math.min(MAX_JACKPOT-jackpot,Math.floor(basePool*JACKPOT_SHARE)));jackpot+=added;state.textContent=added?'Aucun pari gagnant · +'+credits(added)+' au jackpot':'Aucun pari gagnant · jackpot conservé';}
@@ -164,6 +185,8 @@
   }).observe(status,{childList:true,characterData:true,subtree:true});
 
   saveEconomy();showEconomy();renderTickets();
+  try{const cached=JSON.parse(root.dataset.serverWallet||'null');if(cached)applyServerWallet(cached);const picks=JSON.parse(root.dataset.serverBets||'[]');if(picks.length){playerBets=picks.map(runner=>({runner,stake:STAKE,user:true}));betPlaced=true;renderTickets();}}catch{}
   if(balance<STAKE){button.disabled=true;state.textContent='Portefeuille épuisé';}
+  if(root.dataset.walletMode==='connecting'){button.disabled=true;state.textContent='Connexion au portefeuille…';}
   startLobby();
 })();
