@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Jouer · Last Stick Standing v0.1</title>
-  <link rel="stylesheet" href="styles.css?v=20260930-2">
+  <link rel="stylesheet" href="styles.css?v=20260930-3">
 </head>
 <body>
   <main id="stick-tetris" class="game-shell">
@@ -21,8 +21,18 @@
         <span>Portefeuille fictif</span>
         <strong id="demo-balance">12 500 CR</strong>
         <small id="wallet-record">0 V · 0 D</small>
+        <button id="device-link-toggle" class="wallet-link" type="button">Lier un appareil</button>
       </div>
     </header>
+
+    <section id="device-link" class="device-link" hidden aria-label="Associer un appareil au portefeuille">
+      <div><b>Portefeuille partagé</b><small>Crée le code sur l’appareil principal, puis saisis-le sur l’autre.</small></div>
+      <button id="pair-create" type="button">Créer un code</button>
+      <output id="pair-code">—— ——</output>
+      <input id="pair-input" type="text" inputmode="text" maxlength="6" autocomplete="one-time-code" placeholder="CODE" aria-label="Code d’association">
+      <button id="pair-claim" type="button">Associer</button>
+      <small id="pair-state" aria-live="polite"></small>
+    </section>
 
     <section class="arena-card" aria-labelledby="arena-title">
       <div class="arena-head">
@@ -127,8 +137,8 @@
   </main>
   <script src="telemetry-config.js?v=20260930-2"></script>
   <script src="telemetry.js?v=20260930-3"></script>
-  <script src="game.js?v=20260930-7"></script>
-  <script src="multiplayer.js?v=20260930-4"></script>
+  <script src="game.js?v=20260930-8"></script>
+  <script src="multiplayer.js?v=20260930-5"></script>
   <script src="ui.js?v=20260930-7"></script>
   <script src="feedback.js?v=20260930-2"></script>
 </body>

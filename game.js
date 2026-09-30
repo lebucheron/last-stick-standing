@@ -71,7 +71,7 @@
     // The pathfinder reads only pieces already visible on screen; generated
     // future pieces never enter this score.
     for(let step=1;step<=7;step++){
-      const raw=r.x+d*step*12,x=wrapX(raw);if(raw!==x&&!exitClear(r,x,previous)){score-=80;break;}
+      const raw=r.x+d*step*12,x=wrapX(raw);if(raw!==x&&!exitClear(r,x,previous)&&!(step===1&&climbTarget(r,d))){score-=80;break;}
       const y=groundAt(x,-100000);const rise=previous-y;if(rise>S+.5){score-=80;break;}
       score-=Math.max(0,rise)*.13;
       // Runners only react to the nearby warning zone. They no longer inspect
@@ -83,7 +83,7 @@
     return score;
   }
   function directionOpen(r,d){
-    const raw=r.x+d*18,x=wrapX(raw);if(raw!==x&&!exitClear(r,x,r.y))return false;
+    const raw=r.x+d*18,x=wrapX(raw);if(raw!==x&&!exitClear(r,x,r.y))return !!climbTarget(r,d);
     const gy=groundAt(x,r.y),rise=r.y-gy;if(rise>S+.5)return false;
     if(rise>4)return !!climbTarget(r,d);
     return clearBody(r,x,gy)||!!climbTarget(r,d);
@@ -120,9 +120,9 @@
   function beginTieBreak(ids,duration=4.2,subtitle='LES DEUX DERNIERS RÈGLENT ÇA'){const finalists=[...new Set(ids)];if(finalists.length!==2)return false;const winner=finalists[Math.floor(random()*finalists.length)],loser=finalists.find(id=>id!==winner);if(men.find(r=>r.id===loser)?.alive){deathLog.push({runner:String.fromCharCode(65+loser),cause:'combat',at:Math.max(0,Math.round((time-RACE_START)*10)/10)});root.dataset.roundDeaths=JSON.stringify(deathLog);}tieBreak={ids:finalists,winner,left:duration,total:duration,subtitle};status.textContent='Combat final · '+finalists.map(id=>String.fromCharCode(65+id)).join(' vs ');result.textContent=status.textContent;return true;}
   function climbTarget(r,d){
     const raw=r.x+d*20,x=wrapX(raw),warped=x!==raw;const surfaces=stones.filter(c=>x+RADIUS>c.x&&x-RADIUS<c.x+S&&r.y-c.y>2&&r.y-c.y<=S+.5).sort((a,b)=>a.y-b.y);
-    for(const c of surfaces){const tx=d>0?c.x+RADIUS+3:c.x+S-RADIUS-3,sx=warped?x:r.x;if(Math.abs(tx-sx)>35||!clearBody(tx,c.y)||!peerClear(r,tx,c.y))continue;
+    for(const c of surfaces){const tx=d>0?c.x+RADIUS+3:c.x+S-RADIUS-3,sx=warped?(d>0?LEFT-RADIUS:W-LEFT+RADIUS):r.x;if(Math.abs(tx-sx)>35||!clearBody(tx,c.y)||!peerClear(r,tx,c.y))continue;
       if(men.some(o=>o!==r&&o.alive&&o.climb&&Math.abs(o.climb.tx-tx)<20&&Math.abs(o.climb.ty-c.y)<8))continue;
-      let clear=true;for(let k=1;k<=6;k++)if(!clearBody(sx,r.y+(c.y-r.y)*k/6))clear=false;
+      let clear=warped;for(let k=1;!warped&&k<=6;k++)if(!clearBody(sx,r.y+(c.y-r.y)*k/6))clear=false;
       if(clear)return {sx,sy:r.y,tx,ty:c.y,t:0,warped};
     }return null;
   }

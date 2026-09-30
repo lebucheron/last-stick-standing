@@ -86,10 +86,12 @@ function botPicks(seed){
   if(new Set(picks).size===1)picks[4]=String.fromCharCode(65+((picks[4].charCodeAt(0)-64)%6));
   return picks;
 }
+function pairingCode(){const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789',bytes=new Uint8Array(6);crypto.getRandomValues(bytes);return Array.from(bytes,value=>alphabet[value%alphabet.length]).join('');}
 
 export class MatchRoom{
   constructor(state,env){this.state=state;this.env=env;}
   sockets(){return this.state.getWebSockets();}
+  async canonical(player){let current=player;for(let i=0;i<4;i++){const next=await this.state.storage.get('alias:'+current);if(!next||next===current)break;current=next;}return current;}
   async wallet(player,initial={}){
     let wallet=await this.state.storage.get('wallet:'+player);if(wallet)return wallet;
     const safe=(value,fallback,max=1000000)=>Number.isFinite(Number(value))?Math.max(0,Math.min(max,Math.floor(Number(value)))):fallback;
@@ -134,10 +136,10 @@ export class MatchRoom{
   }
   async fetch(request){
     if(request.headers.get('Upgrade')!=='websocket')return new Response('WebSocket required',{status:426});
-    const url=new URL(request.url),session=url.searchParams.get('session'),player=url.searchParams.get('player');if(!validId(session)||!validId(player))return new Response('Invalid identity',{status:400});
+    const url=new URL(request.url),session=url.searchParams.get('session'),device=url.searchParams.get('player');if(!validId(session)||!validId(device))return new Response('Invalid identity',{status:400});const player=await this.canonical(device);
     const initial={balance:url.searchParams.get('balance'),rounds:url.searchParams.get('rounds'),wins:url.searchParams.get('wins'),losses:url.searchParams.get('losses'),wagered:url.searchParams.get('wagered'),paid:url.searchParams.get('paid')};
     const wallet=await this.wallet(player,initial);await this.jackpot(url.searchParams.get('jackpot'));
-    const pair=new WebSocketPair(),client=pair[0],server=pair[1];this.state.acceptWebSocket(server);server.serializeAttachment({session,player});
+    const pair=new WebSocketPair(),client=pair[0],server=pair[1];this.state.acceptWebSocket(server);server.serializeAttachment({session,device,player});
     const round=await this.current();
     await this.sendWallet(server,player,wallet);
     if(round.bets?.[player]?.length)this.send(server,{type:'bet_ack',choices:round.bets[player],wallet,jackpot:await this.jackpot()});
@@ -146,7 +148,17 @@ export class MatchRoom{
     this.broadcast(this.market(round));return new Response(null,{status:101,webSocket:client});
   }
   async webSocketMessage(socket,message){
-    let data;try{data=JSON.parse(String(message));}catch{return;}const round=await this.current(),player=socket.deserializeAttachment()?.player;
+    let data;try{data=JSON.parse(String(message));}catch{return;}const round=await this.current(),attachment=socket.deserializeAttachment()||{},player=attachment.player;
+    if(data.type==='pair_create'&&player){
+      let code;for(let i=0;i<5;i++){const candidate=pairingCode();if(!await this.state.storage.get('pair:'+candidate)){code=candidate;break;}}if(!code){this.send(socket,{type:'pair_error',message:'Impossible de créer un code'});return;}
+      const expiresAt=Date.now()+600000;await this.state.storage.put('pair:'+code,{player,expiresAt});this.send(socket,{type:'pairing_code',code,expiresAt});return;
+    }
+    if(data.type==='pair_claim'&&attachment.device){
+      const code=String(data.code||'').trim().toUpperCase(),link=await this.state.storage.get('pair:'+code);if(!/^[A-Z2-9]{6}$/.test(code)||!link||link.expiresAt<Date.now()){this.send(socket,{type:'pair_error',message:'Code invalide ou expiré'});return;}
+      const target=await this.canonical(link.player),source=await this.canonical(attachment.device);if((round.bets?.[source]?.length||round.bets?.[target]?.length)){this.send(socket,{type:'pair_error',message:'Association après la fin de la manche en cours'});return;}
+      await this.state.storage.put('alias:'+attachment.device,target);await this.state.storage.delete('pair:'+code);socket.serializeAttachment({...attachment,player:target});const wallet=await this.wallet(target),jackpot=await this.jackpot();
+      this.send(socket,{type:'pair_success',playerId:target,wallet,jackpot});this.sendPlayer(target,{type:'pair_notice',message:'Nouvel appareil associé au portefeuille'});return;
+    }
     if(data.type==='bet'&&data.roundId===round.id&&Date.now()<round.raceAt&&/^[A-F]$/.test(data.choice)&&[1,2].includes(data.ticket)&&player){
       const picks=Array.isArray(round.bets[player])?round.bets[player].slice(0,2):[],wallet=await this.wallet(player);
       if(picks[data.ticket-1]){this.send(socket,{type:'bet_error',message:'Ticket déjà utilisé'});return;}if(wallet.balance<500){this.send(socket,{type:'bet_error',message:'Solde insuffisant'});return;}

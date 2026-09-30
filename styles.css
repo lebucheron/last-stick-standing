@@ -32,6 +32,18 @@ body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding
 .wallet span { display: block; color: #899185; font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }
 .wallet strong { display: block; margin-top: 2px; font-size: 12px; font-variant-numeric: tabular-nums; }
 .wallet small { display:block; margin-top:3px; color:#6f7b69; font-size:8px; font-variant-numeric:tabular-nums; }
+.wallet-link { margin-top:5px; padding:0; border:0; color:#a8d789; background:none; font:700 8px/1 inherit; cursor:pointer; }
+.device-link { display:grid; grid-template-columns:1.5fr auto 72px 72px auto; align-items:center; gap:8px; margin:-5px 0 14px; padding:10px; border:1px solid #354031; border-radius:11px; background:#11170f; }
+.device-link[hidden] { display:none; }
+.device-link div { min-width:0; }
+.device-link b,.device-link div small { display:block; }
+.device-link b { color:#dce8d5; font-size:9px; letter-spacing:.08em; text-transform:uppercase; }
+.device-link div small { margin-top:3px; color:#758071; font-size:8px; }
+.device-link button,.device-link input { min-height:32px; border:1px solid #3c4937; border-radius:7px; color:#dfe8da; background:#1a2117; font:700 9px/1 inherit; }
+.device-link button { padding:0 9px; cursor:pointer; }
+.device-link input { width:72px; padding:0 7px; text-align:center; text-transform:uppercase; letter-spacing:.12em; }
+.device-link output { color:#b8ed8e; font:800 13px/1 monospace; letter-spacing:.09em; text-align:center; }
+.device-link > small { grid-column:1/-1; min-height:10px; color:#91a787; font-size:8px; text-align:right; }
 .arena-card, .bet-panel { border: 1px solid #2d352a; border-radius: 15px; background: rgba(14,17,13,.94); box-shadow: 0 18px 50px rgba(0,0,0,.25); }
 .arena-card { position: relative; padding: 12px; overflow: hidden; }
 .arena-card::before { content:""; position:absolute; inset:0; pointer-events:none; background:linear-gradient(115deg,rgba(184,237,142,.035),transparent 35%,rgba(184,237,142,.02)); }
@@ -108,6 +120,9 @@ canvas { position:relative; display: block; width: 100%; height: auto; aspect-ra
   .rule { display: none; }
   .game-bar h1 { font-size: 17px; }
   .wallet { padding: 6px 8px; }
+  .device-link { grid-template-columns:1fr 1fr; }
+  .device-link div,.device-link > small { grid-column:1/-1; }
+  .device-link output,.device-link input { width:100%; }
   .market-strip { grid-template-columns: repeat(3,1fr); gap: 8px; }
   .market-status { grid-column: 1 / -1; text-align: center; }
   .runner-grid { gap: 5px; }
