@@ -3,7 +3,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   first_seen TEXT NOT NULL,
   last_seen TEXT NOT NULL,
   page TEXT,
-  referrer TEXT
+  referrer TEXT,
+  is_test INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS sessions_last_seen ON sessions(last_seen);
@@ -20,6 +21,7 @@ CREATE TABLE IF NOT EXISTS events (
   won INTEGER NOT NULL DEFAULT 0,
   duration_ms INTEGER,
   sudden_death INTEGER NOT NULL DEFAULT 0,
+  is_test INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL
 );
 

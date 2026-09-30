@@ -1,6 +1,7 @@
 (() => {
   const endpoint=(window.LAST_STICK_TELEMETRY_ENDPOINT||'').replace(/\/$/,'');
   if(!endpoint)return;
+  const isTest=new URLSearchParams(location.search).has('test');
 
   const SESSION_KEY='last-stick-session-v1';
   let sessionId;
@@ -10,7 +11,7 @@
   }catch{sessionId=crypto.randomUUID?.()||String(Date.now())+Math.random();}
 
   function send(type,data={}){
-    const body=JSON.stringify({type,session_id:sessionId,page:location.pathname,...data});
+    const body=JSON.stringify({type,session_id:sessionId,page:location.pathname,test:isTest,...data});
     if(navigator.sendBeacon&&type==='session_left'){
       navigator.sendBeacon(endpoint+'/api/events',new Blob([body],{type:'text/plain'}));
       return;

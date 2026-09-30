@@ -3,8 +3,11 @@ import worker from './worker.js';
 
 const writes=[];
 const DB={prepare(sql){return {
-  bind(...values){return {run:async()=>{writes.push({sql,values});return {success:true};}};},
+  values:[],bind(...values){this.values=values;return this;},
+  async run(){writes.push({sql,values:this.values});return {success:true};},
   async first(){
+    if(sql.includes("type='race_started'"))return {created_at:new Date(Date.now()-10000).toISOString()};
+    if(sql.includes("type='race_finished' LIMIT 1"))return null;
     if(sql.includes('AVG('))return {value:34000};
     if(sql.includes("type='race_finished'"))return {count:7};
     return {count:2};
@@ -14,9 +17,9 @@ const DB={prepare(sql){return {
     return {results:[{winner:'B',won:1,duration_ms:33000,sudden_death:0,created_at:new Date().toISOString()}]};
   }
 };}};
-const env={DB,ADMIN_TOKEN:'secret-test'};
+const env={DB,ADMIN_TOKEN:'secret-test',STATS_SINCE:'2026-09-30T09:30:00Z'};
 
-const eventResponse=await worker.fetch(new Request('https://api.test/api/events',{method:'POST',body:JSON.stringify({type:'race_finished',session_id:'12345678-abcd',round_id:'round-1',winner:'B',choice:'B',bet_placed:true,won:true,duration_ms:33000})}),env);
+const eventResponse=await worker.fetch(new Request('https://api.test/api/events',{method:'POST',headers:{origin:'https://lebucheron.github.io'},body:JSON.stringify({type:'race_finished',session_id:'12345678-abcd',round_id:'round-0001',winner:'B',choice:'B',bet_placed:true,won:true,duration_ms:33000})}),env);
 assert.equal(eventResponse.status,202);
 assert.equal(writes.length,2);
 
