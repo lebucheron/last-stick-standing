@@ -2,14 +2,16 @@
   const root=document.getElementById('stick-tetris'),canvas=root.querySelector('canvas'),ctx=canvas.getContext('2d');
   const status=root.querySelector('#st-status'),button=root.querySelector('#st-pause'),legend=root.querySelector('#st-legend'),result=root.querySelector('#st-result');
   const W=420,H=460,S=40,LEFT=10,COLS=10,BASE=420,RADIUS=6,BODY=27,VISUAL_SCALE=1.08;
-  const RULESET='R3',RESULT_SHOW=7.5,DEATH_REVEAL=.85,PLAY_LIMIT=40,FINAL_DUEL_AT=43,LOBBY_END=3,RACE_START=9;
+  const RULESET='R4',RESULT_SHOW=7.5,DEATH_REVEAL=.85,PLAY_LIMIT=40,FINAL_DUEL_AT=43,LOBBY_END=3,RACE_START=9;
   const ARENA_W=COLS*S,ZONE_W=ARENA_W*.25;
-  let stones=[],pieces=[],men=[],specks=[],stains=[],bursts=[],dust=[],deathLog=[],time=0,next=3,camera=0,over=0,round=0,second=-1,palette,seed=1,turn=0,portals=[],teleports=0,impact=0,winnerId=-1,tieBreak=null,pendingFinish=null,paceStart=28,paceSpan=70,networked=false,waitingForNetwork=false,networkRaceAt=0;
+  let stones=[],pieces=[],men=[],specks=[],stains=[],bursts=[],dust=[],deathLog=[],time=0,next=3,camera=0,over=0,round=0,second=-1,palette,seed=1,turn=0,portals=[],warpTrails=[],teleports=0,impact=0,winnerId=-1,tieBreak=null,pendingFinish=null,paceStart=28,paceSpan=70,networked=false,waitingForNetwork=false,networkRaceAt=0;
   let paused=window.openai?.widgetState?.privateContent?.paused??matchMedia('(prefers-reduced-motion: reduce)').matches;
   function random(){seed^=seed<<13;seed^=seed>>>17;seed^=seed<<5;return (seed>>>0)/4294967296;}
   function shuffled(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
   function colors(){const c=getComputedStyle(root),v=n=>c.getPropertyValue(n).trim();palette={bg:v('--background'),fg:v('--foreground'),stone:v('--muted-foreground'),edge:v('--border'),blood:v('--red'),series:Array.from({length:6},(_,i)=>v('--viz-series-'+(i+1)))};}
-  function clearBody(x,y){return x>=LEFT+RADIUS&&x<=W-LEFT-RADIUS&&!stones.some(c=>x+RADIUS>c.x+.2&&x-RADIUS<c.x+S-.2&&y>c.y+.3&&y-BODY<c.y+S-.3);}
+  // The two extra radii are the portal staging points. A runner may occupy
+  // them briefly while climbing through an edge and must remain a valid body.
+  function clearBody(x,y){return x>=LEFT-RADIUS&&x<=W-LEFT+RADIUS&&!stones.some(c=>x+RADIUS>c.x+.2&&x-RADIUS<c.x+S-.2&&y>c.y+.3&&y-BODY<c.y+S-.3);}
   function wrapX(x){const lo=LEFT+RADIUS,hi=W-LEFT-RADIUS,span=hi-lo;return x<lo?hi-((lo-x)%span):x>hi?lo+((x-hi)%span):x;}
   function exitClear(r,x,y){return clearBody(x,y)&&peerClear(r,x,y)&&!pieces.some(p=>p.cells.some(([dx,dy])=>{const cx=LEFT+(p.col+dx)*S,cy=p.y+dy*S;return x+RADIUS>cx&&x-RADIUS<cx+S&&y>cy&&y-BODY<cy+S;}));}
   function peerClear(r,x,y){return !men.some(o=>o!==r&&o.alive&&Math.abs(o.x-x)<17&&Math.abs(o.y-y)<BODY-3);}
@@ -17,7 +19,7 @@
   function groundAt(x,y){let ground=BASE;for(const c of stones)if(x+RADIUS>c.x+.2&&x-RADIUS<c.x+S-.2&&c.y>=y-.6)ground=Math.min(ground,c.y);return ground;}
   function reset(config={}){
     const forced=Number(config.seed),bytes=new Uint32Array(1);if(Number.isInteger(forced)&&forced>0&&forced<=4294967295)bytes[0]=forced;else if(globalThis.crypto?.getRandomValues)crypto.getRandomValues(bytes);else bytes[0]=Math.floor(Math.random()*4294967296);seed=bytes[0]||1;networkRaceAt=Number(config.raceAt)||0;root.dataset.ruleset=RULESET;root.dataset.roundSeed=String(seed>>>0);root.dataset.roundId=String(config.roundId||'');root.dataset.raceAt=String(networkRaceAt||'');turn=(seed>>>8)%6;
-    stones=[];pieces=[];portals=[];teleports=0;specks=[];stains=[];bursts=[];dust=[];deathLog=[];time=0;next=3;camera=0;over=0;second=-1;impact=0;winnerId=-1;tieBreak=null;pendingFinish=null;round++;
+    stones=[];pieces=[];portals=[];warpTrails=[];teleports=0;specks=[];stains=[];bursts=[];dust=[];deathLog=[];time=0;next=3;camera=0;over=0;second=-1;impact=0;winnerId=-1;tieBreak=null;pendingFinish=null;round++;
     // Every arena gets its own rhythm. There is no hidden target duration:
     // some rounds become hostile early, while others build more slowly.
     paceStart=14+random()*12;paceSpan=30+random()*20;
@@ -101,6 +103,11 @@
     if(!other||r.passCooldown>0||other.passCooldown>0||!r.ground||!other.ground||r.climb||other.climb||r.dir!==-other.dir||Math.abs(r.y-other.y)>3||Math.abs(r.x-other.x)>21)return false;
     const x=r.x;r.x=other.x;other.x=x;r.passCooldown=.8;other.passCooldown=.8;r.passPose=.28;other.passPose=.28;r.blocked=0;other.blocked=0;r.choice=.3;other.choice=.3;r.vx=r.dir*34;other.vx=other.dir*34;return true;
   }
+  function showWarp(r,fromX,toX,y){
+    const danger=threat(toX,y)>0,life=.52;
+    portals.push({x:fromX<W/2?LEFT:W-LEFT,y:y-13,life:.4,color:r.id,danger:false},{x:toX<W/2?LEFT:W-LEFT,y:y-13,life:.4,color:r.id,danger});
+    warpTrails.push({fromX,toX,y,life,max:life,color:r.id,danger,dir:r.dir});
+  }
   function kill(r,cause='impact'){
     if(!r.alive)return;
     r.alive=false;root.querySelector('[data-man="'+r.id+'"]').style.opacity='.3';
@@ -132,7 +139,7 @@
     }return null;
   }
   function update(dt){
-    impact=Math.max(0,impact-dt);for(const p of portals)p.life-=dt;portals=portals.filter(p=>p.life>0);blood(dt);if(waitingForNetwork)return;if(over){over-=dt;if(over<=0){if(networked){waitingForNetwork=true;status.textContent='Synchronisation de la prochaine manche…';}else reset();}return;}if(pendingFinish){time+=dt;pendingFinish.left-=dt;if(pendingFinish.left<=0){const ending=pendingFinish;pendingFinish=null;finish(ending.ids,ending.tie);}return;}if(tieBreak){time+=dt;tieBreak.left-=dt;if(tieBreak.left<=0){const winner=tieBreak.winner;tieBreak=null;finish([winner],true);}return;}time+=dt;
+    impact=Math.max(0,impact-dt);for(const p of portals)p.life-=dt;portals=portals.filter(p=>p.life>0);for(const trail of warpTrails)trail.life-=dt;warpTrails=warpTrails.filter(trail=>trail.life>0);blood(dt);if(waitingForNetwork)return;if(over){over-=dt;if(over<=0){if(networked){waitingForNetwork=true;status.textContent='Synchronisation de la prochaine manche…';}else reset();}return;}if(pendingFinish){time+=dt;pendingFinish.left-=dt;if(pendingFinish.left<=0){const ending=pendingFinish;pendingFinish=null;finish(ending.ids,ending.tie);}return;}if(tieBreak){time+=dt;tieBreak.left-=dt;if(tieBreak.left<=0){const winner=tieBreak.winner;tieBreak=null;finish([winner],true);}return;}time+=dt;
     if(time<LOBBY_END){const joined=Number(root.dataset?.lobbyCount||0),marker=-100-joined;if(second!==marker){second=marker;status.textContent='Salle d’attente · '+joined+'/5 adversaires';}return;}
     if(time<RACE_START){const count=Math.max(1,Math.ceil(RACE_START-time));if(second!==-count){second=-count;status.textContent='Choisis tes stickmen · départ dans '+count;}return;}
     const elapsed=time-RACE_START,aliveNow=men.filter(r=>r.alive),aliveCount=aliveNow.length;
@@ -160,7 +167,7 @@
       }
       if(Math.abs(r.shove)>1){
         const targetX=wrapX(r.x+r.shove*dt),warped=Math.abs(targetX-r.x)>W/2;
-        if(warped?exitClear(r,targetX,r.y):clearBody(targetX,r.y)&&peerClear(r,targetX,r.y)){r.x=targetX;if(warped){teleports++;portals.push({x:targetX<W/2?LEFT:W-LEFT,y:r.y-13,life:.35,color:r.id});}}else r.shove=0;
+        if(warped?exitClear(r,targetX,r.y):clearBody(targetX,r.y)&&peerClear(r,targetX,r.y)){const fromX=r.x;r.x=targetX;if(warped){teleports++;showWarp(r,fromX,targetX,r.y);}}else r.shove=0;
         r.shove*=Math.exp(-6*dt);
       }
       const danger=threat(r.x,r.y);
@@ -193,8 +200,8 @@
       const speed=(danger?83:42)*(r.land>0?.5:1)*(r.recoil>0||r.pushPose>0?0:1),desired=r.dir*speed;
       const accel=r.ground?360:160;r.vx+=Math.max(-accel*dt,Math.min(accel*dt,desired-r.vx));
       const rawX=r.x+r.vx*dt,nx=wrapX(rawX),crossed=nx!==rawX;let didWarp=false;
-      if(crossed?exitClear(r,nx,r.y):clearBody(nx,r.y)&&peerClear(r,nx,r.y)){if(crossed){portals.push({x:r.x< W/2?LEFT:W-LEFT,y:r.y-13,life:.35,color:r.id},{x:nx<W/2?LEFT:W-LEFT,y:r.y-13,life:.35,color:r.id});teleports++;didWarp=true;r.choice=0;}r.x=nx;r.blocked=0;}
-      else if(r.ground){if(r.blocked>.12&&tryPush(r)){r.blocked=0;}const c=climbTarget(r,r.dir);if(c){if(c.warped){portals.push({x:r.x<W/2?LEFT:W-LEFT,y:r.y-13,life:.35,color:r.id},{x:c.sx<W/2?LEFT:W-LEFT,y:r.y-13,life:.35,color:r.id});teleports++;r.x=c.sx;}r.climb=c;r.ground=false;r.vx=0;r.vy=0;continue;}r.vx=0;r.blocked+=dt;if(r.blocked>.18){r.dir*=-1;r.choice=.35+random()*.25;r.blocked=0;}}
+      if(crossed?exitClear(r,nx,r.y):clearBody(nx,r.y)&&peerClear(r,nx,r.y)){if(crossed){showWarp(r,r.x,nx,r.y);teleports++;didWarp=true;r.choice=0;}r.x=nx;r.blocked=0;}
+      else if(r.ground){if(r.blocked>.12&&tryPush(r)){r.blocked=0;}const c=climbTarget(r,r.dir);if(c){if(c.warped){showWarp(r,r.x,c.sx,r.y);teleports++;r.x=c.sx;}r.climb=c;r.ground=false;r.vx=0;r.vy=0;continue;}r.vx=0;r.blocked+=dt;if(r.blocked>.18){r.dir*=-1;r.choice=.35+random()*.25;r.blocked=0;}}
       else r.vx=0;
       const oldY=r.y;r.vy+=500*dt;let ny=r.y+r.vy*dt;const floor=groundAt(r.x,oldY);
       if(ny>=floor){ny=floor;if(!r.ground&&r.vy>80)r.land=.17;r.vy=0;r.ground=true;}else r.ground=false;
@@ -255,7 +262,11 @@
       else if(!r.ground){line([[-2,-18],[-9,-22],[-12,-28]]);line([[-1,-18],[7,-22],[10,-27]]);line([[0,-11],[-6,-5],[-9,0]]);line([[0,-11],[5,-5],[8,0]]);}
       else{ctx.translate(0,r.land?2:0);line([[-2,-18],[-walk,-14],[-walk-3,-18]]);line([[-2,-18],[walk,-14],[walk+2,-18]]);line([[0,-11],[-walk,-5],[-walk-2,0]]);line([[0,-11],[walk,-5],[walk+2,0]]);}ctx.restore();
     }
-    for(const p of portals){ctx.strokeStyle=palette.series[p.color];ctx.globalAlpha=p.life/.35;ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(p.x,p.y,4+(1-p.life/.35)*9,17,0,0,Math.PI*2);ctx.stroke();}ctx.globalAlpha=1;
+    for(const trail of warpTrails){const alpha=Math.max(0,trail.life/trail.max),exitX=trail.toX<W/2?LEFT+18:W-LEFT-18,edgeX=trail.toX<W/2?LEFT:W-LEFT,dir=trail.toX<W/2?1:-1;ctx.strokeStyle=palette.series[trail.color];ctx.globalAlpha=alpha*.55;ctx.lineWidth=2;ctx.setLineDash([5,5]);line([[LEFT+3,trail.y-13],[LEFT+34,trail.y-13]]);line([[W-LEFT-3,trail.y-13],[W-LEFT-34,trail.y-13]]);ctx.setLineDash([]);ctx.globalAlpha=alpha*.25;ctx.fillStyle=palette.series[trail.color];ctx.beginPath();ctx.arc(exitX,trail.y-23,5,0,Math.PI*2);ctx.fill();ctx.strokeStyle=palette.series[trail.color];ctx.lineWidth=2;line([[exitX,trail.y-18],[exitX,trail.y-7]]);line([[exitX,trail.y-15],[exitX-dir*7,trail.y-11]]);line([[exitX,trail.y-7],[exitX-dir*6,trail.y]]);ctx.globalAlpha=alpha;ctx.fillStyle=trail.danger?palette.blood:palette.series[trail.color];ctx.font='900 13px Inter,system-ui,sans-serif';ctx.textAlign='center';ctx.fillText(trail.danger?'!':'›',edgeX+dir*11,trail.y-38);ctx.textAlign='start';}
+    for(const p of portals){ctx.strokeStyle=p.danger?palette.blood:palette.series[p.color];ctx.globalAlpha=Math.min(1,p.life/.4);ctx.lineWidth=p.danger?3:2;ctx.beginPath();ctx.ellipse(p.x,p.y,4+(1-p.life/.4)*11,18,0,0,Math.PI*2);ctx.stroke();}ctx.globalAlpha=1;
+    // Une face translucide repasse devant le stickman : l'instant exact où un
+    // bloc le recouvre reste visible, même quand la chute est très rapide.
+    for(const p of pieces)if(p.wait<=0)for(const [dx,dy] of p.cells)stone(LEFT+(p.col+dx)*S,p.y+dy*S,.34);
     ctx.fillStyle=palette.stone;for(const p of dust){ctx.globalAlpha=p.life/p.max*.42;ctx.beginPath();ctx.arc(p.x,p.y,p.size*(1+(1-p.life/p.max)*1.6),0,Math.PI*2);ctx.fill();}ctx.fillStyle=palette.blood;for(const b of bursts){ctx.globalAlpha=b.life/.2;ctx.beginPath();ctx.ellipse(b.x,b.y,18*(1-b.life/.3),8,0,0,Math.PI*2);ctx.fill();}for(const p of specks){ctx.globalAlpha=Math.min(1,p.life/.3);ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,Math.PI*2);ctx.fill();}ctx.globalAlpha=1;ctx.restore();suddenDeath();victory();
   }
   function pause(value){paused=value;button.textContent=paused?'Animer':'Pause';}

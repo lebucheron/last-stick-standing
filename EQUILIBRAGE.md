@@ -2,7 +2,7 @@
 
 ## Version courante
 
-`R2` commence après le rétablissement de la grimpe normale et de la grimpe par les portails latéraux. Les résultats antérieurs restent classés `legacy` et ne doivent pas être mélangés à R2 pour décider d’un réglage.
+`R4` commence avec la correction des positions temporaires de portail : un stickman qui traverse ou grimpe par un bord ne peut plus être éliminé par la pose d’un bloc situé ailleurs. Les résultats R3 et antérieurs restent séparés et ne doivent pas être mélangés à R4 pour décider d’un réglage.
 
 Chaque modification susceptible de changer les probabilités de victoire crée une nouvelle version de règles. Une correction purement graphique peut conserver la version existante.
 
