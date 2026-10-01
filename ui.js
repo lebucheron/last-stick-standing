@@ -7,6 +7,7 @@
   const ticketsEl=root.querySelector('#local-tickets');
   const status=root.querySelector('#st-status');
   const balanceEl=root.querySelector('#demo-balance');
+  const refillEl=root.querySelector('#demo-refill');
   const recordEl=root.querySelector('#wallet-record'),economyProfitEl=root.querySelector('#economy-profit'),economyWageredEl=root.querySelector('#economy-wagered'),economyLastEl=root.querySelector('#economy-last'),economyNoteEl=root.querySelector('#economy-note');
   const playersEl=root.querySelector('#player-count'),poolEl=root.querySelector('#pool-total'),jackpotEl=root.querySelector('#jackpot-total'),marketEl=root.querySelector('#market-status'),potentialEl=root.querySelector('#potential-payout');
   const settlement=root.querySelector('#settlement'),winnerSwatch=root.querySelector('#winner-swatch'),winnerLabel=root.querySelector('#winner-label'),finalPool=root.querySelector('#final-pool'),finalStake=root.querySelector('#final-stake'),finalPayout=root.querySelector('#final-payout'),finalProfit=root.querySelector('#final-profit');
@@ -24,7 +25,7 @@
       return clean;
     }catch{return blankEconomy();}
   }
-  let economy=loadEconomy(),selected='A',locked=false,finished=false,betPlaced=false,settled=false,balance=economy.balance,jackpot=economy.jackpot,playerBets=[],opponentBets=[],lobbyTimers=[],raceStartedAt=0,roundId='',networkCounts=null,serverWallet=false,betPending=false;
+  let economy=loadEconomy(),selected='A',locked=false,finished=false,betPlaced=false,settled=false,balance=economy.balance,jackpot=economy.jackpot,playerBets=[],opponentBets=[],lobbyTimers=[],raceStartedAt=0,roundId='',networkCounts=null,serverWallet=false,betPending=false,refillPending=false;
   root.dataset.selectedRunner=selected;
 
   function report(type,data={}){
@@ -46,6 +47,7 @@
     economyNoteEl.textContent=(serverWallet?'Crédits fictifs synchronisés par le serveur':'Crédits fictifs enregistrés sur cet appareil')+' · '+economy.rounds+' manche'+(economy.rounds>1?'s':'')+' réglée'+(economy.rounds>1?'s':'')+' · retour théorique ≈ 81–85 %';
   }
   function showBalance(){showEconomy();}
+  function updateRefill(){if(!refillEl)return;const available=serverWallet&&balance<STAKE&&playerBets.length===0;refillEl.hidden=!available;refillEl.disabled=!available||refillPending;refillEl.textContent=refillPending?'Recharge…':'Recevoir 2 500 CR de test';}
   function randomRunner(){const data=new Uint32Array(1);crypto.getRandomValues(data);return RUNNERS[data[0]%RUNNERS.length];}
   function startLobby(){
     lobbyTimers.forEach(clearTimeout);lobbyTimers=[];opponentBets=[];root.dataset.lobbyCount='0';updateMarket();
@@ -65,7 +67,7 @@
   window.addEventListener('laststick:market',event=>{lobbyTimers.forEach(clearTimeout);lobbyTimers=[];networkCounts=event.detail?.counts||null;applyNetworkMarket();});
   function applyServerWallet(data){
     if(!data?.wallet)return;serverWallet=true;root.dataset.walletMode='server';const wallet=data.wallet;balance=Math.max(0,Number(wallet.balance)||0);jackpot=Math.max(0,Number(data.jackpot)||0);
-    for(const key of ['rounds','wins','losses','wagered','paid'])economy[key]=Math.max(0,Number(wallet[key])||0);economy.balance=balance;economy.jackpot=jackpot;economy.pending=0;if(wallet.last)economy.history=[wallet.last];saveEconomy();showEconomy();updateMarket();if(!locked){button.disabled=balance<STAKE;state.textContent=balance>=STAKE?'Portefeuille serveur connecté':'Portefeuille épuisé';}
+    for(const key of ['rounds','wins','losses','wagered','paid'])economy[key]=Math.max(0,Number(wallet[key])||0);economy.balance=balance;economy.jackpot=jackpot;economy.pending=0;if(wallet.last)economy.history=[wallet.last];saveEconomy();showEconomy();updateMarket();updateRefill();if(!locked){button.disabled=balance<STAKE;state.textContent=balance>=STAKE?'Portefeuille serveur connecté':'Portefeuille épuisé · secours de test disponible';}
   }
   window.addEventListener('laststick:wallet',event=>applyServerWallet(event.detail));
   window.addEventListener('laststick:bet-ack',event=>{
@@ -74,6 +76,9 @@
     if(!locked){button.disabled=playerBets.length>=MAX_LOCAL_BETS||balance<STAKE;button.textContent=playerBets.length<MAX_LOCAL_BETS?'Ajouter le ticket '+selected:playerBets.length+' tickets enregistrés';state.textContent='Ticket serveur confirmé · '+playerBets.length+'/2';}
   });
   window.addEventListener('laststick:bet-error',event=>{betPending=false;state.textContent=event.detail?.message||'Mise refusée';button.disabled=locked||balance<STAKE;});
+  refillEl?.addEventListener('click',()=>{if(refillPending||balance>=STAKE||playerBets.length)return;refillPending=true;updateRefill();state.textContent='Recharge du portefeuille fictif…';window.dispatchEvent(new CustomEvent('laststick:demo-refill-request'));});
+  window.addEventListener('laststick:demo-refill-success',event=>{refillPending=false;updateRefill();state.textContent=event.detail?.message||'Crédits de test ajoutés';});
+  window.addEventListener('laststick:demo-refill-error',event=>{refillPending=false;updateRefill();state.textContent=event.detail?.message||'Recharge indisponible';});
   function bets(includePreview=false){const all=opponentBets.concat(playerBets);if(includePreview)all.push({runner:selected,stake:STAKE,user:true,preview:true});return all;}
   function poolByRunner(includePreview=false){const totals=Object.fromEntries(RUNNERS.map(id=>[id,0]));for(const bet of bets(includePreview))totals[bet.runner]+=bet.stake;return totals;}
   function marketValid(all){return all.length>=2&&new Set(all.map(b=>b.runner)).size>=2;}
@@ -100,7 +105,7 @@
   cards.forEach(card=>card.addEventListener('click',()=>select(card.dataset.runner)));
   function renderTickets(){
     root.dataset.selectedRunners=playerBets.map(b=>b.runner).join('');
-    ticketsEl.innerHTML=playerBets.length?playerBets.map((bet,index)=>`<b style="--ticket-color:var(--viz-series-${RUNNERS.indexOf(bet.runner)+1})"><i></i>Joueur ${index+1} · ${bet.runner}</b>`).join(''):'<span>2 tickets locaux maximum · invite un ami</span>';
+    ticketsEl.innerHTML=playerBets.length?playerBets.map((bet,index)=>`<b style="--ticket-color:var(--viz-series-${RUNNERS.indexOf(bet.runner)+1})"><i></i>Joueur ${index+1} · ${bet.runner}</b>`).join(''):'<span>2 tickets locaux maximum · invite un ami</span>';updateRefill();
   }
   function lockChoice(manual){
     if(manual){

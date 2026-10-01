@@ -29,6 +29,7 @@ La page `index.html` présente la v0.1, puis `play.html` lance la démonstration
 - Falaises possibles sur deux niveaux : les stickmen peuvent les descendre, mais ne grimpent toujours qu'un seul bloc. Les cuvettes fermées de deux niveaux sont refusées.
 - Jusqu'à deux tickets locaux de 500 CR par manche pour jouer côte à côte avec un ami.
 - Économie de démonstration resserrée : 12 % de régulation, jackpot alimenté par 15 % des pots sans gagnant et plafond de 15 000 CR pour les nouvelles accumulations.
+- Secours de démonstration : sous 500 CR et sans ticket actif, le portefeuille partagé peut revenir à 2 500 CR une fois toutes les 24 heures.
 
 ## Lancer le prototype
 

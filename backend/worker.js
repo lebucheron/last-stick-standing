@@ -106,6 +106,14 @@ function botPicks(seed){
   return picks;
 }
 function pairingCode(){const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789',bytes=new Uint8Array(6);crypto.getRandomValues(bytes);return Array.from(bytes,value=>alphabet[value%alphabet.length]).join('');}
+const DEMO_REFILL_BALANCE=2500,DEMO_REFILL_COOLDOWN=86400000;
+export function demoRefillDecision(wallet,activeBetCount=0,now=Date.now()){
+  if(activeBetCount>0)return {ok:false,message:'Attends le règlement de la manche en cours'};
+  if((Number(wallet?.balance)||0)>=500)return {ok:false,message:'Le secours apparaît seulement sous 500 CR'};
+  const availableAt=(Number(wallet?.demoRefillAt)||0)+DEMO_REFILL_COOLDOWN;
+  if(availableAt>now){const hours=Math.max(1,Math.ceil((availableAt-now)/3600000));return {ok:false,message:`Secours déjà utilisé · disponible dans ${hours} h`,availableAt};}
+  return {ok:true,balance:DEMO_REFILL_BALANCE,refilledAt:now};
+}
 
 export class MatchRoom{
   constructor(state,env){this.state=state;this.env=env;}
@@ -177,6 +185,12 @@ export class MatchRoom{
       const target=await this.canonical(link.player),source=await this.canonical(attachment.device);if((round.bets?.[source]?.length||round.bets?.[target]?.length)){this.send(socket,{type:'pair_error',message:'Association après la fin de la manche en cours'});return;}
       await this.state.storage.put('alias:'+attachment.device,target);await this.state.storage.delete('pair:'+code);socket.serializeAttachment({...attachment,player:target});const wallet=await this.wallet(target),jackpot=await this.jackpot();
       this.send(socket,{type:'pair_success',playerId:target,wallet,jackpot});this.sendPlayer(target,{type:'pair_notice',message:'Nouvel appareil associé au portefeuille'});return;
+    }
+    if(data.type==='demo_refill'&&player){
+      const wallet=await this.wallet(player),decision=demoRefillDecision(wallet,round.bets?.[player]?.length||0);
+      if(!decision.ok){this.send(socket,{type:'demo_refill_error',message:decision.message,availableAt:decision.availableAt||null});return;}
+      wallet.balance=decision.balance;wallet.demoRefillAt=decision.refilledAt;await this.state.storage.put('wallet:'+player,wallet);
+      const jackpot=await this.jackpot();this.sendPlayer(player,{type:'wallet',wallet,jackpot});this.sendPlayer(player,{type:'demo_refill_success',amount:decision.balance,message:'2 500 CR de test ajoutés · cinq tickets disponibles'});return;
     }
     if(data.type==='bet'&&data.roundId===round.id&&Date.now()<round.raceAt&&/^[A-F]$/.test(data.choice)&&[1,2].includes(data.ticket)&&player){
       const picks=Array.isArray(round.bets[player])?round.bets[player].slice(0,2):[],wallet=await this.wallet(player);

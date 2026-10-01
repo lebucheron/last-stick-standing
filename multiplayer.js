@@ -22,6 +22,8 @@
       if(data.type==='wallet'){root.dataset.serverWallet=JSON.stringify(data);dispatch('laststick:wallet',data);}
       if(data.type==='bet_ack'){root.dataset.serverWallet=JSON.stringify(data);root.dataset.serverBets=JSON.stringify(data.choices||[]);dispatch('laststick:bet-ack',data);}
       if(data.type==='bet_error')dispatch('laststick:bet-error',data);
+      if(data.type==='demo_refill_success')dispatch('laststick:demo-refill-success',data);
+      if(data.type==='demo_refill_error')dispatch('laststick:demo-refill-error',data);
       if(data.type==='settlement')dispatch('laststick:settlement',data);
       if(data.type==='pairing_code'){pairCode.textContent=data.code.slice(0,3)+' '+data.code.slice(3);pairState.textContent='Code valable 10 minutes';}
       if(data.type==='pair_success'){playerId=data.playerId;try{localStorage.setItem(PLAYER_KEY,playerId);}catch{}root.dataset.serverWallet=JSON.stringify(data);dispatch('laststick:wallet',data);pairState.textContent='Appareil associé · portefeuille synchronisé';pairInput.value='';}
@@ -36,6 +38,7 @@
     if(data.type==='race_finished')socket.send(JSON.stringify({type:'finished',roundId,winner:data.winner,durationMs:data.duration_ms}));
   });
   window.addEventListener('laststick:bet-request',event=>{if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'bet',roundId:root.dataset.roundId,choice:event.detail.choice,ticket:event.detail.ticket}));});
+  window.addEventListener('laststick:demo-refill-request',()=>{if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'demo_refill'}));else dispatch('laststick:demo-refill-error',{message:'Serveur en reconnexion · réessaie dans un instant'});});
   linkToggle?.addEventListener('click',()=>{linkPanel.hidden=!linkPanel.hidden;});
   pairCreate?.addEventListener('click',()=>{if(socket?.readyState===WebSocket.OPEN){pairState.textContent='Création du code…';socket.send(JSON.stringify({type:'pair_create'}));}});
   pairInput?.addEventListener('input',()=>{pairInput.value=pairInput.value.toUpperCase().replace(/[^A-Z2-9]/g,'').slice(0,6);});

@@ -1,5 +1,12 @@
 import assert from 'node:assert/strict';
-import worker from './worker.js';
+import worker,{demoRefillDecision} from './worker.js';
+
+const refillNow=Date.parse('2026-10-02T12:00:00Z');
+assert.deepEqual(demoRefillDecision({balance:0},0,refillNow),{ok:true,balance:2500,refilledAt:refillNow});
+assert.equal(demoRefillDecision({balance:500},0,refillNow).ok,false);
+assert.equal(demoRefillDecision({balance:0},1,refillNow).message,'Attends le règlement de la manche en cours');
+assert.equal(demoRefillDecision({balance:0,demoRefillAt:refillNow-3600000},0,refillNow).availableAt,refillNow+23*3600000);
+assert.equal(demoRefillDecision({balance:0,demoRefillAt:refillNow-86400000},0,refillNow).ok,true);
 
 const writes=[];
 const DB={prepare(sql){return {
