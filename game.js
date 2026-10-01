@@ -1,8 +1,8 @@
 (() => {
   const root=document.getElementById('stick-tetris'),canvas=root.querySelector('canvas'),ctx=canvas.getContext('2d');
   const status=root.querySelector('#st-status'),button=root.querySelector('#st-pause'),legend=root.querySelector('#st-legend'),result=root.querySelector('#st-result');
-  const W=420,H=460,S=40,LEFT=10,COLS=10,BASE=420,RADIUS=6,BODY=27,VISUAL_SCALE=1.08;
-  const RULESET='R4',RESULT_SHOW=7.5,DEATH_REVEAL=.85,PLAY_LIMIT=40,FINAL_DUEL_AT=43,LOBBY_END=3,RACE_START=9;
+  const W=420,H=460,S=50,LEFT=10,COLS=8,BASE=420,RADIUS=6,BODY=27,VISUAL_SCALE=1.08;
+  const RULESET='R5',RESULT_SHOW=7.5,DEATH_REVEAL=.85,PLAY_LIMIT=40,FINAL_DUEL_AT=43,LOBBY_END=3,RACE_START=9;
   const ARENA_W=COLS*S,ZONE_W=ARENA_W*.25;
   let stones=[],pieces=[],men=[],specks=[],stains=[],bursts=[],dust=[],deathLog=[],time=0,next=3,camera=0,over=0,round=0,second=-1,palette,seed=1,turn=0,portals=[],warpTrails=[],teleports=0,impact=0,winnerId=-1,tieBreak=null,pendingFinish=null,paceStart=28,paceSpan=70,networked=false,waitingForNetwork=false,networkRaceAt=0;
   let paused=window.openai?.widgetState?.privateContent?.paused??matchMedia('(prefers-reduced-motion: reduce)').matches;

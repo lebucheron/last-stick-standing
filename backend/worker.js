@@ -69,7 +69,7 @@ async function receiveEvent(request,env){
 async function stats(request,env){
   const expected=env.ADMIN_TOKEN;
   if(!expected||request.headers.get('authorization')!==`Bearer ${expected}`)return json({error:'unauthorized'},401);
-  const since=env.STATS_SINCE||'1970-01-01T00:00:00Z',url=new URL(request.url),requested=url.searchParams.get('ruleset')||'R4',selected=requested==='all'||validRuleset(requested)?requested:'R4';
+  const since=env.STATS_SINCE||'1970-01-01T00:00:00Z',url=new URL(request.url),requested=url.searchParams.get('ruleset')||'R5',selected=requested==='all'||validRuleset(requested)?requested:'R5';
   const filter=selected==='all'?'':' AND COALESCE(ruleset,\'legacy\')=?',scope=[since,...(selected==='all'?[]:[selected])];
   const withFinished=`WITH finished AS (SELECT e.* FROM events e JOIN (SELECT MIN(id) id FROM events WHERE type='race_finished' AND COALESCE(is_test,0)=0 AND created_at>=?${filter} GROUP BY round_id) one ON one.id=e.id)`;
   const query=(sql,extra=[])=>env.DB.prepare(`${withFinished} ${sql}`).bind(...scope,...extra);

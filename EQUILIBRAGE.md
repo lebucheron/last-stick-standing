@@ -2,7 +2,7 @@
 
 ## Version courante
 
-`R4` commence avec la correction des positions temporaires de portail : un stickman qui traverse ou grimpe par un bord ne peut plus être éliminé par la pose d’un bloc situé ailleurs. Les résultats R3 et antérieurs restent séparés et ne doivent pas être mélangés à R4 pour décider d’un réglage.
+`R5` agrandit les cubes de 40 à 50 px et fait passer l’arène de dix à huit colonnes. Les résultats R4 et antérieurs restent séparés et ne doivent pas être mélangés à R5 pour décider d’un réglage. La simulation de validation sur 2 000 manches donne 27,6 s de moyenne, un 90e percentile à 37,7 s et 2,05 % de combats finaux.
 
 Chaque modification susceptible de changer les probabilités de victoire crée une nouvelle version de règles. Une correction purement graphique peut conserver la version existante.
 

@@ -9,7 +9,7 @@ La page `index.html` présente la v0.1, puis `play.html` lance la démonstration
 - Six stickmen aux capacités identiques.
 - Terrain initial aléatoire avec petites marches sans cavités.
 - Couleurs mélangées entre les positions de départ.
-- Pièces grises qui construisent le parcours pendant la manche.
+- Huit colonnes de cubes gris XXL de 50 px qui construisent plus vite un parcours tendu.
 - Portails latéraux à hauteur constante.
 - Escalade, chute, collisions et poussées sous menace uniquement.
 - Circulation autonome hors danger et réaction limitée aux zones déjà visibles.
