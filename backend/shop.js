@@ -14,9 +14,17 @@ export function decimal(value,places=18){
 export function display(units){const n=BigInt(units),s=n.toString().padStart(19,'0');return (s.slice(0,-18)+'.'+s.slice(-18)).replace(/\.?0+$/,'');}
 export function priceUnits(cents,usdPerToken,usdPerEur){const price=decimal(usdPerToken),eur=decimal(usdPerEur);if(price<=0n||eur<=0n)throw Error('Cours indisponible');const numerator=BigInt(cents)*eur*10n**18n,denominator=100n*price;return ((numerator+denominator-1n)/denominator).toString();}
 async function hash(value){const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value));return [...new Uint8Array(bytes)].map(x=>x.toString(16).padStart(2,'0')).join('');}
+export function signingSecret(value){
+  let secret=String(value||'').trim();
+  const assignment=secret.match(/(?:^|\n)\s*SETTLEMENT_SECRET\s*=\s*([\s\S]*?)(?=\n\s*[A-Z_]+\s*=|$)/);
+  if(assignment)secret=assignment[1];
+  secret=secret.trim().replace(/^(['"])([\s\S]*)\1$/,'$2').replace(/\s/g,'');
+  if(!/^fsc_live_[A-Za-z0-9_-]{20,}$/.test(secret))throw Error('La valeur SETTLEMENT_SECRET dans Cloudflare doit être la clé Forest complète commençant par fsc_live_.');
+  return secret;
+}
 export async function signed(env,path,body,fetcher=fetch){
   if(!env.SETTLEMENT_SECRET)throw Error('Connexion Forest non configurée');
-  const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(env.SETTLEMENT_SECRET),{name:'HMAC',hash:'SHA-256'},false,['sign']);
+  const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(signingSecret(env.SETTLEMENT_SECRET)),{name:'HMAC',hash:'SHA-256'},false,['sign']);
   const signature=await crypto.subtle.sign('HMAC',key,new TextEncoder().encode(body));
   const hex=[...new Uint8Array(signature)].map(x=>x.toString(16).padStart(2,'0')).join('');
   const r=await fetcher(API+'/playables/'+PROJECT_ID+'/html/'+path,{method:'POST',headers:{'content-type':'application/json','X-Forest-Settlement-Signature':'v1='+hex},body,signal:AbortSignal.timeout(15000)});

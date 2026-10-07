@@ -1,13 +1,19 @@
 import assert from 'node:assert/strict';
-import {shopRequest,decimal,display,priceUnits,PROJECT_ID} from './shop.js';
+import {createHmac} from 'node:crypto';
+import {shopRequest,decimal,display,priceUnits,PROJECT_ID,signingSecret} from './shop.js';
+const testSecret='fsc_live_abcdefghijklmnopqrstuvwxyz0123456789';
+assert.equal(signingSecret('SETTLEMENT_SECRET="'+testSecret+'"\r\n'),testSecret);
+assert.equal(signingSecret('FOREST_API_BASE_URL=http://example\nSETTLEMENT_SECRET='+testSecret.slice(0,25)+'\n'+testSecret.slice(25)),testSecret);
+assert.throws(()=>signingSecret('http://example'));
 assert.equal(decimal('3.324420183784223e-7'),332442018378n);
 assert.equal(display('1230000000000000000'),'1.23');
 assert.equal(display('1000000000000000000'),'1');
 assert.equal(priceUnits(25,'0.5','1.2'),'600000000000000000');
 assert.throws(()=>priceUnits(25,'0','1.2'));
-const data=new Map(),storage={get:async k=>structuredClone(data.get(k)),put:async(k,v)=>data.set(k,structuredClone(v)),delete:async k=>data.delete(k),transaction:async f=>f(storage)},room={state:{storage},env:{SETTLEMENT_SECRET:'test-only-secret'}};
+const data=new Map(),storage={get:async k=>structuredClone(data.get(k)),put:async(k,v)=>data.set(k,structuredClone(v)),delete:async k=>data.delete(k),transaction:async f=>f(storage)},room={state:{storage},env:{SETTLEMENT_SECRET:testSecret}};
 let nonce,settlements=[],failOnce=true;
 async function fetcher(url,options){
+  if(options?.headers?.['X-Forest-Settlement-Signature'])assert.equal(options.headers['X-Forest-Settlement-Signature'],'v1='+createHmac('sha256',room.env.SETTLEMENT_SECRET).update(options.body).digest('hex'));
   if(url.endsWith('/identity/redeem')){assert.ok(options.headers['X-Forest-Settlement-Signature'].startsWith('v1='));assert.ok(url.includes(PROJECT_ID));return Response.json({userId:'forest-user',nonce});}
   if(url.includes('/stats?'))return Response.json({price:'0.5'});
   if(url.includes('ecb.europa'))return new Response("<Cube time='"+new Date().toISOString().slice(0,10)+"'><Cube currency='USD' rate='1.2'/></Cube>");
