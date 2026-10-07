@@ -16,6 +16,7 @@
     socket.addEventListener('open',()=>{root.dataset.networked='1';if(live)live.lastChild.textContent=' MULTI EN DIRECT';});
     socket.addEventListener('message',event=>{
       let data;try{data=JSON.parse(event.data);}catch{return;}
+      if(data.type==='cosmetics')dispatch('laststick:cosmetics',data);
       if(data.type==='round'){root.dataset.roundId=data.roundId;if(roundLabel)roundLabel.textContent='MANCHE '+data.roundId.slice(0,6).toUpperCase()+(data.catchingUp?' · RATTRAPAGE':'');dispatch('laststick:round',data);}
       if(data.type==='waiting')dispatch('laststick:waiting',data);
       if(data.type==='result')dispatch('laststick:server-result',data);
@@ -37,6 +38,7 @@
     if(socket?.readyState!==WebSocket.OPEN)return;const data=event.detail||{},roundId=root.dataset.roundId;
     if(data.type==='race_finished')socket.send(JSON.stringify({type:'finished',roundId,winner:data.winner,durationMs:data.duration_ms}));
   });
+  window.addEventListener('laststick:cosmetic-selection',event=>{if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'cosmetic_selection',roundId:root.dataset.roundId,...event.detail}));});
   window.addEventListener('laststick:bet-request',event=>{if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'bet',roundId:root.dataset.roundId,choice:event.detail.choice,ticket:event.detail.ticket}));});
   window.addEventListener('laststick:demo-refill-request',()=>{if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'demo_refill'}));else dispatch('laststick:demo-refill-error',{message:'Serveur en reconnexion · réessaie dans un instant'});});
   linkToggle?.addEventListener('click',()=>{linkPanel.hidden=!linkPanel.hidden;});

@@ -1,3 +1,4 @@
+import '../cosmetics-core.js';
 const ALLOWED_EVENTS=new Set(['session_started','heartbeat','session_left','bet_placed','race_started','race_finished']);
 const CORS_HEADERS={
   'access-control-allow-origin':'https://lebucheron.github.io',
@@ -171,11 +172,21 @@ export class MatchRoom{
     await this.sendWallet(server,player,wallet);
     if(round.bets?.[player]?.length)this.send(server,{type:'bet_ack',choices:round.bets[player],wallet,jackpot:await this.jackpot()});
     this.send(server,{type:'round',roundId:round.id,seed:round.seed,raceAt:round.raceAt,catchingUp:Date.now()>=round.raceAt});
+    this.send(server,{type:'cosmetics',roundId:round.id,loadouts:round.cosmetics||{}});
     if(round.closing&&round.result){this.send(server,{type:'result',roundId:round.id,...round.result});await this.sendSettlement(server,round);}
     this.broadcast(this.market(round));return new Response(null,{status:101,webSocket:client});
   }
   async webSocketMessage(socket,message){
     let data;try{data=JSON.parse(String(message));}catch{return;}const round=await this.current(),attachment=socket.deserializeAttachment()||{},player=attachment.player;
+    if(data.type==='cosmetic_selection'&&player&&data.roundId===round.id&&Date.now()<round.raceAt&&/^[A-F]$/.test(data.runner)&&(round.bets?.[player]||[]).includes(data.runner)){
+      // The first ticket holder claims a runner's appearance for this round. Arena is never transmitted.
+      const loadouts=round.cosmetics||{},owners=round.cosmeticOwners||{};
+      if(owners[data.runner]&&owners[data.runner]!==player)return;
+      const owned=await this.state.storage.get('cosmetic-owned:'+player)||[];
+      loadouts[data.runner]=globalThis.LastStickCosmeticsCore.validatePublic(data,owned);
+      owners[data.runner]=player;round.cosmetics=loadouts;round.cosmeticOwners=owners;
+      await this.state.storage.put('round',round);this.broadcast({type:'cosmetics',roundId:round.id,loadouts});return;
+    }
     if(data.type==='pair_create'&&player){
       let code;for(let i=0;i<5;i++){const candidate=pairingCode();if(!await this.state.storage.get('pair:'+candidate)){code=candidate;break;}}if(!code){this.send(socket,{type:'pair_error',message:'Impossible de créer un code'});return;}
       const expiresAt=Date.now()+600000;await this.state.storage.put('pair:'+code,{player,expiresAt});this.send(socket,{type:'pairing_code',code,expiresAt});return;
