@@ -1,3 +1,4 @@
+import {shopRequest,shopSession} from './shop.js';
 import '../cosmetics-core.js';
 const ALLOWED_EVENTS=new Set(['session_started','heartbeat','session_left','bet_placed','race_started','race_finished']);
 const CORS_HEADERS={
@@ -150,6 +151,9 @@ export class MatchRoom{
     let jackpot=await this.jackpot(),realWinningStake=0;for(const picks of Object.values(round.bets||{}))realWinningStake+=picks.filter(id=>id===winner).length*500;
     if(!winningPool)jackpot=Math.min(15000,jackpot+Math.floor(basePool*.15));
     const settlements={};
+    const users=new Map();for(const [device,user] of Object.entries(round.forestPlayers||{})){const picks=round.bets?.[device]||[];if(picks.length)users.set(user,(users.get(user)||[]).concat(picks));}
+    for(const [user,picks] of users){const progress=await this.state.storage.get('forest-progress:'+user)||{games:0,wins:0,recent:[]};if(!(progress.recent||[]).includes(round.id)){progress.games++;if(picks.includes(winner))progress.wins++;progress.recent=[...(progress.recent||[]),round.id].slice(-100);await this.state.storage.put('forest-progress:'+user,progress);}}
+
     for(const [player,picks] of Object.entries(round.bets||{})){
       const wallet=await this.wallet(player),stake=picks.length*500,winningStake=picks.filter(id=>id===winner).length*500;
       let payout=winningPool?Math.floor(basePool*winningStake/winningPool):0;if(winningStake&&realWinningStake)payout+=Math.floor(jackpot*winningStake/realWinningStake);
@@ -163,6 +167,7 @@ export class MatchRoom{
     this.send(socket,{type:'settlement',...entry,wallet,jackpot:await this.jackpot()});
   }
   async fetch(request){
+    if(new URL(request.url).pathname.startsWith('/api/shop/'))return shopRequest(request,this);
     if(request.headers.get('Upgrade')!=='websocket')return new Response('WebSocket required',{status:426});
     const url=new URL(request.url),session=url.searchParams.get('session'),device=url.searchParams.get('player');if(!validId(session)||!validId(device))return new Response('Invalid identity',{status:400});const player=await this.canonical(device);
     const initial={balance:url.searchParams.get('balance'),rounds:url.searchParams.get('rounds'),wins:url.searchParams.get('wins'),losses:url.searchParams.get('losses'),wagered:url.searchParams.get('wagered'),paid:url.searchParams.get('paid')};
@@ -178,11 +183,16 @@ export class MatchRoom{
   }
   async webSocketMessage(socket,message){
     let data;try{data=JSON.parse(String(message));}catch{return;}const round=await this.current(),attachment=socket.deserializeAttachment()||{},player=attachment.player;
+    if(data.type==='forest_auth'&&typeof data.token==='string'){
+      const verified=await shopSession(this.state.storage,data.token);if(!verified)return;
+      socket.serializeAttachment({...attachment,forestUser:verified.userId,forestExpires:verified.expiresAt});
+      this.send(socket,{type:'forest_inventory',owned:await this.state.storage.get('forest-inventory:'+verified.userId)||[],progress:await this.state.storage.get('forest-progress:'+verified.userId)||{games:0,wins:0}});return;
+    }
     if(data.type==='cosmetic_selection'&&player&&data.roundId===round.id&&Date.now()<round.raceAt&&/^[A-F]$/.test(data.runner)&&(round.bets?.[player]||[]).includes(data.runner)){
       // The first ticket holder claims a runner's appearance for this round. Arena is never transmitted.
       const loadouts=round.cosmetics||{},owners=round.cosmeticOwners||{};
       if(owners[data.runner]&&owners[data.runner]!==player)return;
-      const owned=await this.state.storage.get('cosmetic-owned:'+player)||[];
+      const owned=attachment.forestUser&&attachment.forestExpires>Date.now()?await this.state.storage.get('forest-inventory:'+attachment.forestUser)||[]:[];
       loadouts[data.runner]=globalThis.LastStickCosmeticsCore.validatePublic(data,owned);
       owners[data.runner]=player;round.cosmetics=loadouts;round.cosmeticOwners=owners;
       await this.state.storage.put('round',round);this.broadcast({type:'cosmetics',roundId:round.id,loadouts});return;
@@ -206,7 +216,7 @@ export class MatchRoom{
     if(data.type==='bet'&&data.roundId===round.id&&Date.now()<round.raceAt&&/^[A-F]$/.test(data.choice)&&[1,2].includes(data.ticket)&&player){
       const picks=Array.isArray(round.bets[player])?round.bets[player].slice(0,2):[],wallet=await this.wallet(player);
       if(picks[data.ticket-1]){this.send(socket,{type:'bet_error',message:'Ticket déjà utilisé'});return;}if(wallet.balance<500){this.send(socket,{type:'bet_error',message:'Solde insuffisant'});return;}
-      picks[data.ticket-1]=data.choice;round.bets[player]=picks.filter(Boolean);wallet.balance-=500;wallet.wagered+=500;await this.state.storage.put('round',round);await this.state.storage.put('wallet:'+player,wallet);
+      if(attachment.forestUser&&attachment.forestExpires>Date.now()){round.forestPlayers=round.forestPlayers||{};round.forestPlayers[player]=attachment.forestUser;}picks[data.ticket-1]=data.choice;round.bets[player]=picks.filter(Boolean);wallet.balance-=500;wallet.wagered+=500;await this.state.storage.put('round',round);await this.state.storage.put('wallet:'+player,wallet);
       this.sendPlayer(player,{type:'bet_ack',choices:round.bets[player],wallet,jackpot:await this.jackpot()});this.broadcast(this.market(round));
     }
     if(data.type==='finished'&&data.roundId===round.id&&!round.closing&&Date.now()>=round.raceAt+5000){
@@ -223,6 +233,7 @@ export default {
     if(request.method==='OPTIONS')return new Response(null,{status:204,headers:CORS_HEADERS});
     const url=new URL(request.url);
     try{
+      if(url.pathname.startsWith('/api/shop/')){if(request.headers.get('origin')!=='https://lebucheron.github.io')return json({error:'origin_forbidden'},403);const id=env.MATCH_ROOM.idFromName('public-arena-v2');return env.MATCH_ROOM.get(id).fetch(request);}
       if(request.method==='POST'&&url.pathname==='/api/events')return await receiveEvent(request,env);
       if(request.method==='GET'&&url.pathname==='/api/stats')return await stats(request,env);
       if(request.method==='GET'&&url.pathname==='/api/live'){

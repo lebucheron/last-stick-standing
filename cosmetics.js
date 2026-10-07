@@ -3,7 +3,7 @@
   let saved;try{saved=JSON.parse(localStorage.getItem(key)||'null');}catch{}
   let profile=C.clean(saved),category='skins',active=null,busy=false,provider=null,shared={},previewArena=null;
   const panel=document.createElement('section');panel.className='cosmetics';panel.setAttribute('aria-label','Cosmétiques');
-  panel.innerHTML='<h2>Ton vestiaire</h2><p>Skins et effets partagés dans la salle · arène personnelle · aucun bonus de jeu.</p><p id="cosmetic-progress"></p><p>Le jeu reste accessible sans mise. Pour la progression cosmétique, une course avec un ticket compte comme une partie ; un ticket sur le gagnant compte comme une victoire.</p><nav aria-label="Catégories cosmétiques"></nav><div class="cosmetics-grid"></div><p role="status" aria-live="polite" id="cosmetic-notice">Achats $STICK bientôt disponibles. Prix cibles en euros ; conversion au cours du coin lors de l’achat.</p>';
+  panel.innerHTML='<h2>Ton vestiaire</h2><p>Skins et effets partagés dans la salle · arène personnelle · aucun bonus de jeu.</p><p id="cosmetic-progress"></p><p>Le jeu reste accessible sans mise. Pour la progression cosmétique, une course avec un ticket compte comme une partie ; un ticket sur le gagnant compte comme une victoire.</p><nav aria-label="Catégories cosmétiques"></nav><div class="cosmetics-grid"></div><p role="status" aria-live="polite" id="cosmetic-notice">Prix cibles en euros ; conversion au cours du coin au moment de l’achat. Les achats utilisent le solde de jeu Forest.</p>';
   root.insertBefore(panel,document.querySelector('#st-result'));
   const grid=panel.querySelector('.cosmetics-grid'),notice=panel.querySelector('#cosmetic-notice');
   const previewBar=document.createElement('div');previewBar.className='arena-preview-bar';previewBar.hidden=true;
@@ -31,7 +31,7 @@
         if(quote.itemId!==item.id||quote.targetEurCents!==r.cents||quote.currency!=='STICK'||!/^\d+$/.test(String(quote.units))||BigInt(quote.units)<=0n||!Number.isSafeInteger(quote.expiresAt)||quote.expiresAt<=Date.now())throw Error('Devis invalide ou expiré');
         const receipt=await provider.purchase(quote);const ownership=await provider.verifyOwnership({itemId:item.id,receipt});
         if(ownership?.itemId!==item.id||ownership.owned!==true)throw Error('Achat non confirmé');
-        profile.owned.push(item.id);save();notice.textContent=item.name+' acheté. Tu peux l’équiper.';
+        if(!profile.owned.includes(item.id))profile.owned.push(item.id);save();notice.textContent=item.name+' acheté. Tu peux l’équiper.';
       }catch(error){notice.textContent=error.message||'Achat annulé';}finally{busy=false;render();}};
       card.append(canvas,title,info,description,requirement,button);
       if(item.category==='arenas'){const preview=document.createElement('button');preview.type='button';preview.className='arena-preview-button';preview.textContent='Voir dans l’arène';preview.onclick=()=>{previewArena=item.id;previewLabel.textContent='Aperçu : '+item.name+' · non équipé';previewBar.hidden=false;document.querySelector('.arena-card').scrollIntoView({block:'start',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});closePreview.focus({preventScroll:true});};card.append(preview);}
@@ -39,6 +39,7 @@
     }
   }
   window.addEventListener('laststick:event',event=>{const d=event.detail||{};if(d.type==='bet_placed'){window.dispatchEvent(new CustomEvent('laststick:cosmetic-selection',{detail:{runner:d.choice,...C.publicLoadout(profile)}}));}if(d.type==='race_started'){root.dataset.cosmeticRaceActive='1';active=d.bet_placed?{runner:d.choices?.[0]||d.choice,id:d.round_id}:null;render();}if(d.type==='race_finished'){root.dataset.cosmeticRaceActive='0';if(active?.id===d.round_id&&C.complete(profile,d.round_id,d.bet_placed===true&&(d.choices||[d.choice]).includes(d.winner)))save();active=null;render();}});
+  window.addEventListener('laststick:forest-inventory',e=>{const data=e.detail||{};if(Array.isArray(data.owned)){profile.owned=C.items.filter(i=>i.rarity==='free').map(i=>i.id).concat(data.owned.filter(id=>C.find(id)));if(data.progress){profile.games=data.progress.games||0;profile.wins=data.progress.wins||0;}profile=C.clean(profile);save();render();}});
   window.addEventListener('laststick:round',()=>{root.dataset.cosmeticRaceActive='0';active=null;shared={};render();});
   window.addEventListener('laststick:cosmetics',e=>{if(e.detail?.roundId===root.dataset.roundId)shared=e.detail?.loadouts||{};});
   globalThis.LastStickCosmetics={

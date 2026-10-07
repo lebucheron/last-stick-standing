@@ -7,15 +7,17 @@
   const SESSION_KEY='last-stick-session-v1',PLAYER_KEY='last-stick-player-v1',ECONOMY_KEY='last-stick-economy-v2';let sessionId,playerId,socket,retry;
   try{sessionId=sessionStorage.getItem(SESSION_KEY);if(!sessionId){sessionId=crypto.randomUUID();sessionStorage.setItem(SESSION_KEY,sessionId);}}catch{sessionId=crypto.randomUUID();}
   try{playerId=localStorage.getItem(PLAYER_KEY);if(!playerId){playerId=crypto.randomUUID();localStorage.setItem(PLAYER_KEY,playerId);}}catch{playerId=crypto.randomUUID();}
+  let forestToken=null;
   let imported={};try{imported=JSON.parse(localStorage.getItem(ECONOMY_KEY)||'{}')||{};}catch{}
   const dispatch=(name,detail)=>window.dispatchEvent(new CustomEvent(name,{detail}));
   function connect(){
     clearTimeout(retry);const url=new URL(endpoint);url.protocol=url.protocol==='https:'?'wss:':'ws:';url.pathname='/api/live';url.searchParams.set('session',sessionId);url.searchParams.set('player',playerId);
     for(const key of ['balance','jackpot','rounds','wins','losses','wagered','paid'])if(Number.isFinite(Number(imported[key])))url.searchParams.set(key,String(Math.max(0,Math.floor(Number(imported[key])))));
     socket=new WebSocket(url);
-    socket.addEventListener('open',()=>{root.dataset.networked='1';if(live)live.lastChild.textContent=' MULTI EN DIRECT';});
+    socket.addEventListener('open',()=>{root.dataset.networked='1';if(forestToken)socket.send(JSON.stringify({type:'forest_auth',token:forestToken}));if(live)live.lastChild.textContent=' MULTI EN DIRECT';});
     socket.addEventListener('message',event=>{
       let data;try{data=JSON.parse(event.data);}catch{return;}
+      if(data.type==='forest_inventory')dispatch('laststick:forest-inventory',data);
       if(data.type==='cosmetics')dispatch('laststick:cosmetics',data);
       if(data.type==='round'){root.dataset.roundId=data.roundId;if(roundLabel)roundLabel.textContent='MANCHE '+data.roundId.slice(0,6).toUpperCase()+(data.catchingUp?' · RATTRAPAGE':'');dispatch('laststick:round',data);}
       if(data.type==='waiting')dispatch('laststick:waiting',data);
@@ -25,7 +27,7 @@
       if(data.type==='bet_error')dispatch('laststick:bet-error',data);
       if(data.type==='demo_refill_success')dispatch('laststick:demo-refill-success',data);
       if(data.type==='demo_refill_error')dispatch('laststick:demo-refill-error',data);
-      if(data.type==='settlement')dispatch('laststick:settlement',data);
+      if(data.type==='settlement'){dispatch('laststick:settlement',data);dispatch('laststick:forest-round-finished',{});}
       if(data.type==='pairing_code'){pairCode.textContent=data.code.slice(0,3)+' '+data.code.slice(3);pairState.textContent='Code valable 10 minutes';}
       if(data.type==='pair_success'){playerId=data.playerId;try{localStorage.setItem(PLAYER_KEY,playerId);}catch{}root.dataset.serverWallet=JSON.stringify(data);dispatch('laststick:wallet',data);pairState.textContent='Appareil associé · portefeuille synchronisé';pairInput.value='';}
       if(data.type==='pair_notice')pairState.textContent=data.message||'Nouvel appareil associé';
@@ -38,6 +40,7 @@
     if(socket?.readyState!==WebSocket.OPEN)return;const data=event.detail||{},roundId=root.dataset.roundId;
     if(data.type==='race_finished')socket.send(JSON.stringify({type:'finished',roundId,winner:data.winner,durationMs:data.duration_ms}));
   });
+  window.addEventListener('laststick:forest-auth',event=>{forestToken=event.detail?.token||null;if(forestToken&&socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'forest_auth',token:forestToken}));});
   window.addEventListener('laststick:cosmetic-selection',event=>{if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'cosmetic_selection',roundId:root.dataset.roundId,...event.detail}));});
   window.addEventListener('laststick:bet-request',event=>{if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'bet',roundId:root.dataset.roundId,choice:event.detail.choice,ticket:event.detail.ticket}));});
   window.addEventListener('laststick:demo-refill-request',()=>{if(socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:'demo_refill'}));else dispatch('laststick:demo-refill-error',{message:'Serveur en reconnexion · réessaie dans un instant'});});
